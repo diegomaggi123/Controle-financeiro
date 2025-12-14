@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { Transaction } from '../types';
-import { formatCurrency, getMonthYearKey } from '../utils';
+import { formatCurrency, getMonthYearKey, normalizeCurrency } from '../utils';
 import { format, startOfYear, addMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { FileSpreadsheet, FileText } from 'lucide-react';
@@ -31,16 +31,24 @@ const AnnualComparison: React.FC<AnnualComparisonProps> = ({ transactions, curre
         const expense = monthTransactions
             .filter(t => t.type === 'expense')
             .reduce((acc, t) => acc + t.amount, 0);
+        
+        const normIncome = normalizeCurrency(income);
+        const normExpense = normalizeCurrency(expense);
 
         months.push({
             name: monthName,
-            income,
-            expense,
-            balance: income - expense
+            income: normIncome,
+            expense: normExpense,
+            balance: normalizeCurrency(normIncome - normExpense)
         });
     }
     return months;
   }, [transactions, currentYear]);
+
+  // Totals for the summary row
+  const totalIncome = normalizeCurrency(annualData.reduce((acc, m) => acc + m.income, 0));
+  const totalExpense = normalizeCurrency(annualData.reduce((acc, m) => acc + m.expense, 0));
+  const totalBalance = normalizeCurrency(annualData.reduce((acc, m) => acc + m.balance, 0));
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -88,13 +96,13 @@ const AnnualComparison: React.FC<AnnualComparisonProps> = ({ transactions, curre
                     <tr className="bg-gray-50 font-bold border-t-2 border-gray-200">
                          <td className="p-4 text-gray-900">TOTAL</td>
                          <td className="p-4 text-right text-green-700">
-                            {formatCurrency(annualData.reduce((acc, m) => acc + m.income, 0))}
+                            {formatCurrency(totalIncome)}
                          </td>
                          <td className="p-4 text-right text-red-700">
-                            {formatCurrency(annualData.reduce((acc, m) => acc + m.expense, 0))}
+                            {formatCurrency(totalExpense)}
                          </td>
                          <td className="p-4 text-right text-blue-800">
-                            {formatCurrency(annualData.reduce((acc, m) => acc + m.balance, 0))}
+                            {formatCurrency(totalBalance)}
                          </td>
                     </tr>
                 </tbody>

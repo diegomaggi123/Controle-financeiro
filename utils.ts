@@ -9,11 +9,16 @@ import { Transaction } from './types';
 
 export const generateId = (): string => uuidv4();
 
+// Função crucial para evitar erros como 0.1 + 0.2 = 0.30000000004
+export const normalizeCurrency = (value: number): number => {
+  return Math.round(value * 100) / 100;
+};
+
 export const formatCurrency = (value: number): string => {
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
     currency: 'BRL',
-  }).format(value);
+  }).format(normalizeCurrency(value));
 };
 
 export const formatDate = (dateStr: string): string => {
@@ -66,7 +71,7 @@ export const exportToExcel = (transactions: Transaction[], fileName: string = 't
     'Descrição': t.description,
     'Categoria': t.category,
     'Tipo': t.type === 'income' ? 'Receita' : 'Despesa',
-    'Valor': t.amount, // Keep as number for Excel math
+    'Valor': normalizeCurrency(t.amount), // Ensure rounding
     'Repetição': t.recurrenceType === 'single' ? 'À Vista' : 
                  t.recurrenceType === 'fixed' ? 'Fixo' :
                  t.recurrenceType === 'installment' ? `Parcelado (${t.installmentCurrent}/${t.installmentTotal})` :
@@ -108,10 +113,10 @@ export const exportToPDF = (transactions: Transaction[], title: string = 'Relat�
 
   doc.text(title, 14, 15);
   
-  // Calculate Totals
+  // Calculate Totals using normalizeCurrency
   const income = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
   const expense = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
-  const balance = income - expense;
+  const balance = normalizeCurrency(income) - normalizeCurrency(expense);
 
   doc.setFontSize(10);
   doc.text(`Gerado em: ${format(new Date(), 'dd/MM/yyyy HH:mm')}`, 14, 22);

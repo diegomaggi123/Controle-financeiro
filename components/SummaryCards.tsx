@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { Transaction, CategoryData } from '../types';
-import { formatCurrency } from '../utils';
+import { formatCurrency, normalizeCurrency } from '../utils';
 import { ArrowDownCircle, ArrowUpCircle, Wallet } from 'lucide-react';
 
 interface SummaryCardsProps {
@@ -27,7 +27,7 @@ const SummaryCards: React.FC<SummaryCardsProps> = ({ transactions, categories })
     let committedExpense = 0;
     const processedCategories = new Set<string>();
 
-    // Passa por todas as categorias cadastradas (para pegar as metas, mesmo que não tenha gasto ainda)
+    // Passa por todas as categorias cadastradas
     categories.forEach(cat => {
       const budget = cat.budget || 0;
       const actual = expensesMap[cat.name] || 0;
@@ -45,10 +45,13 @@ const SummaryCards: React.FC<SummaryCardsProps> = ({ transactions, categories })
       }
     });
 
-    return { income, expense: committedExpense };
+    return { 
+        income: normalizeCurrency(income), 
+        expense: normalizeCurrency(committedExpense) 
+    };
   }, [transactions, categories]);
 
-  const balance = summary.income - summary.expense;
+  const balance = normalizeCurrency(summary.income - summary.expense);
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">

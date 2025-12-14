@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Transaction, RecurrenceType, TransactionType, CategoryData, EstablishmentData } from '../types';
-import { generateId, addMonthsToDate, formatDateForInput, formatCurrency } from '../utils';
+import { generateId, addMonthsToDate, formatDateForInput, formatCurrency, normalizeCurrency } from '../utils';
 import { X, Plus, Trash2 } from 'lucide-react';
 import { addMonths, addWeeks, parseISO } from 'date-fns';
 
@@ -96,18 +96,13 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
       return;
     }
 
-    // Lógica corrigida:
-    // Se for EDIÇÃO (tem initialData), perguntamos o escopo se for recorrente.
     if (initialData) {
         if (initialData.recurrenceType !== 'single' || recurrenceType !== 'single') {
             setShowUpdateScopeModal(true);
         } else {
             processSave('single');
         }
-    } 
-    // Se for CRIAÇÃO (Novo lançamento), SEMPRE usamos 'future' para garantir
-    // que o loop de repetição (parcelas/fixo) seja executado.
-    else {
+    } else {
         processSave('future');
     }
   };
@@ -118,10 +113,10 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     const purchaseDate = parseISO(date);
     const startBillingDate = startNextMonth ? addMonths(purchaseDate, 1) : purchaseDate;
     
-    const parsedAmount = parseFloat(amount.replace(',', '.'));
+    // Normaliza para float e corrige casas decimais
+    const parsedAmount = normalizeCurrency(parseFloat(amount.replace(',', '.')));
     const upperDescription = description.toUpperCase();
 
-    // Helper para calcular data baseado na frequência
     const getNextDate = (startDate: Date, index: number, freq: string) => {
         if (freq === 'weekly') return addWeeks(startDate, index);
         if (freq === 'biweekly') return addWeeks(startDate, index * 2);
@@ -141,45 +136,51 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
             recurrenceType: 'single'
         });
     } else if (recurrenceType === 'fixed') {
-        // Ajusta quantidade baseado na frequência para cobrir aproximadamente 1 ou 2 anos
-        let count = 24; // Mensal = 2 anos
-        if (frequency === 'biweekly') count = 26; // Quinzenal = 1 ano
-        if (frequency === 'weekly') count = 52; // Semanal = 1 ano
+        let count = 24; 
+        if (frequency === 'biweekly') count = 26; 
+        if (frequency === 'weekly') count = 52; 
 
-        // Se for update e escopo 'single', edita só 1. Se for create (scope vem como future), cria todos.
         if (scope === 'single') count = 1;
         
         for (let i = 0; i < count; i++) {
             const billDate = getNextDate(startBillingDate, i, frequency);
-            const currentDate = getNextDate(purchaseDate, i, frequency); // Calcula também a data da compra
+            const currentDate = getNextDate(purchaseDate, i, frequency);
             const id = (initialData && scope === 'single' && i === 0) ? initialData.id : generateId();
 
             transactionsToSave.push({
                 id,
                 groupId: baseGroupId,
                 description: upperDescription,
-                amount: parsedAmount,
+                amount: parsedAmount, // Fixo é sempre o valor cheio
                 type,
                 category,
-                date: currentDate.toISOString(), // Usa a data calculada
+                date: currentDate.toISOString(), 
                 billingDate: billDate.toISOString(),
                 recurrenceType: 'fixed'
             });
         }
     } else if (recurrenceType === 'installment') {
         const totalInstallments = parseInt(installments);
-        const installmentValue = parsedAmount / totalInstallments;
+        
+        // Lógica de centavos: calcula o valor base (arredondado pra baixo)
+        // e joga a diferença na primeira parcela.
+        // Ex: 100 / 3 = 33.33. Resto = 0.01. Parc 1 = 33.34, Parc 2,3 = 33.33
+        const baseInstallmentValue = Math.floor((parsedAmount / totalInstallments) * 100) / 100;
+        const remainder = normalizeCurrency(parsedAmount - (baseInstallmentValue * totalInstallments));
+
         const loopCount = scope === 'single' ? 1 : totalInstallments;
 
         for (let i = 0; i < loopCount; i++) {
              const currentInstallmentNumber = scope === 'single' && initialData ? initialData.installmentCurrent : (i + 1);
              
-             // Usa a frequência escolhida para calcular as datas
+             // Adiciona o resto apenas na primeira parcela do conjunto total
+             let currentAmount = baseInstallmentValue;
+             if (currentInstallmentNumber === 1) {
+                 currentAmount = normalizeCurrency(currentAmount + remainder);
+             }
+
              const billDate = getNextDate(startBillingDate, i, frequency);
              
-             // Lógica da data de compra (date):
-             // Se for Mensal (padrão de cartão), mantém a data original da compra.
-             // Se for Semanal/Quinzenal, assume que é uma despesa recorrente e atualiza a data da "compra/ocorrência".
              let currentDateStr = date;
              if (frequency !== 'monthly') {
                  const currentDate = getNextDate(purchaseDate, i, frequency);
@@ -192,7 +193,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                  id,
                  groupId: baseGroupId,
                  description: upperDescription,
-                 amount: installmentValue,
+                 amount: currentAmount,
                  type,
                  category,
                  date: currentDateStr, 
@@ -203,14 +204,14 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
              });
         }
     } else if (recurrenceType === 'repeat') {
+        // No modo REPETIR, o valor é cheio em todas as vezes (não divide)
         const totalRepeats = parseInt(installments);
         const loopCount = scope === 'single' ? 1 : totalRepeats;
 
         for (let i = 0; i < loopCount; i++) {
             const currentNumber = scope === 'single' && initialData ? initialData.installmentCurrent : (i + 1);
-            // Usa a frequência escolhida
             const billDate = getNextDate(startBillingDate, i, frequency);
-            const currentDate = getNextDate(purchaseDate, i, frequency); // Calcula também a data da compra
+            const currentDate = getNextDate(purchaseDate, i, frequency);
             const id = (initialData && scope === 'single' && i === 0) ? initialData.id : generateId();
 
             transactionsToSave.push({
@@ -220,7 +221,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                 amount: parsedAmount, 
                 type,
                 category,
-                date: currentDate.toISOString(), // Usa a data calculada
+                date: currentDate.toISOString(), 
                 billingDate: billDate.toISOString(),
                 recurrenceType: 'repeat',
                 installmentCurrent: currentNumber,
@@ -397,7 +398,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
             </select>
           </div>
 
-          {/* Frequency Selector - Agora visível também para Parcelado */}
+          {/* Frequency Selector */}
           {(recurrenceType === 'fixed' || recurrenceType === 'repeat' || recurrenceType === 'installment') && (
             <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">FREQUÊNCIA</label>

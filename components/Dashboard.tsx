@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { Transaction } from '../types';
-import { formatCurrency } from '../utils';
+import { formatCurrency, normalizeCurrency } from '../utils';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 
 interface DashboardProps {
@@ -11,42 +11,73 @@ interface DashboardProps {
 const COLORS = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#6366f1', '#14b8a6', '#06b6d4', '#84cc16', '#64748b'];
 
 const Dashboard: React.FC<DashboardProps> = ({ transactions }) => {
+  
+  // 1. Calcular a Renda Total do Mês (Base para a porcentagem)
+  // Usamos normalizeCurrency para garantir que 0.1 + 0.2 não vire 0.300000004
+  const totalIncome = useMemo(() => {
+    const sum = transactions
+      .filter(t => t.type === 'income')
+      .reduce((acc, t) => acc + t.amount, 0);
+    return normalizeCurrency(sum);
+  }, [transactions]);
+
+  // 2. Calcular Despesas Totais (Apenas para referência ou fallback)
+  const totalExpenses = useMemo(() => {
+    const sum = transactions
+      .filter(t => t.type === 'expense')
+      .reduce((acc, t) => acc + t.amount, 0);
+    return normalizeCurrency(sum);
+  }, [transactions]);
+
+  // Helper para calcular a porcentagem correta
+  const calculatePercentage = (value: number) => {
+    // Se houver receita, calcula sobre a receita (Pedido do usuário: % da Renda)
+    if (totalIncome > 0) {
+      const pct = (value / totalIncome) * 100;
+      return pct.toFixed(1) + '% da Renda';
+    } 
+    // Se não houver receita (0), calcula sobre o total de gastos para não mostrar "Infinity"
+    else if (totalExpenses > 0) {
+      const pct = (value / totalExpenses) * 100;
+      return pct.toFixed(1) + '% dos Gastos';
+    }
+    return '0%';
+  };
+
   const categoryData = useMemo(() => {
     const expenses = transactions.filter(t => t.type === 'expense');
+    
+    // Agrupa somando os valores
     const grouped = expenses.reduce((acc, t) => {
-      acc[t.category] = (acc[t.category] || 0) + t.amount;
+      // Normaliza a soma a cada passo para evitar erros de ponto flutuante acumulados
+      acc[t.category] = normalizeCurrency((acc[t.category] || 0) + t.amount);
       return acc;
     }, {} as Record<string, number>);
-
-    const total = (Object.values(grouped) as number[]).reduce((a, b) => a + b, 0);
 
     return Object.entries(grouped)
       .map(([name, value]: [string, number]) => ({
         name,
         value,
-        percentage: total > 0 ? ((value / total) * 100).toFixed(1) + '%' : '0%'
+        percentage: calculatePercentage(value)
       }))
-      .sort((a, b) => b.value - a.value); // Ordem decrescente (Maior para menor)
-  }, [transactions]);
+      .sort((a, b) => b.value - a.value); // Ordem decrescente
+  }, [transactions, totalIncome, totalExpenses]);
 
   const establishmentData = useMemo(() => {
     const expenses = transactions.filter(t => t.type === 'expense');
     
     // 1. Agrupar valores
     const grouped = expenses.reduce((acc, t) => {
-      acc[t.description] = (acc[t.description] || 0) + t.amount;
+      acc[t.description] = normalizeCurrency((acc[t.description] || 0) + t.amount);
       return acc;
     }, {} as Record<string, number>);
-
-    // Total Geral para cálculo de porcentagem
-    const total = (Object.values(grouped) as number[]).reduce((a, b) => a + b, 0);
 
     // 2. Criar array inicial ordenado
     let sortedData = Object.entries(grouped)
       .map(([name, value]: [string, number]) => ({
         name,
         value,
-        percentage: '' // Será calculado no final
+        percentage: '' // Será preenchido depois
       }))
       .sort((a, b) => b.value - a.value);
 
@@ -54,10 +85,11 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions }) => {
     if (sortedData.length > 10) {
       const top10 = sortedData.slice(0, 10);
       const others = sortedData.slice(10);
-      const othersTotal = others.reduce((acc, item) => acc + item.value, 0);
+      // Normaliza a soma do grupo "Outros"
+      const othersTotal = normalizeCurrency(others.reduce((acc, item) => acc + item.value, 0));
 
       top10.push({
-        name: 'Outros estabelecimentos',
+        name: 'OUTROS LOCAIS',
         value: othersTotal,
         percentage: ''
       });
@@ -65,21 +97,27 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions }) => {
       sortedData = top10;
     }
 
-    // 4. Calcular porcentagens finais baseadas no total geral
+    // 4. Calcular porcentagens finais usando a lógica baseada na Renda
     return sortedData.map(item => ({
       ...item,
-      percentage: total > 0 ? ((item.value / total) * 100).toFixed(1) + '%' : '0%'
+      percentage: calculatePercentage(item.value)
     }));
-  }, [transactions]);
+  }, [transactions, totalIncome, totalExpenses]);
 
   const CustomTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
       return (
-        <div className="bg-white p-2 shadow rounded border text-sm z-50">
-          <p className="font-bold">{data.name}</p>
-          <p className="text-gray-600">{formatCurrency(data.value)}</p>
-          <p className="text-blue-500 font-semibold">{data.percentage}</p>
+        <div className="bg-white p-3 shadow-lg rounded-lg border border-gray-100 text-sm z-50">
+          <p className="font-bold text-gray-800 uppercase mb-1">{data.name}</p>
+          <div className="flex flex-col gap-1">
+            <span className="text-gray-600 font-medium">
+                Valor: {formatCurrency(data.value)}
+            </span>
+            <span className="text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded w-fit text-xs border border-blue-100">
+                {data.percentage}
+            </span>
+          </div>
         </div>
       );
     }
@@ -90,7 +128,8 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions }) => {
       const { payload } = entry;
       return (
           <span className="text-xs text-gray-600 ml-1">
-              <span className="font-medium text-gray-800">{value}</span>: {formatCurrency(payload.value)} ({payload.percentage})
+              <span className="font-medium text-gray-800 uppercase">{value}</span>: {formatCurrency(payload.value)} 
+              <span className="text-gray-400 ml-1 text-[10px]">({payload.percentage})</span>
           </span>
       );
   };
@@ -99,7 +138,10 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions }) => {
     <div className="space-y-6">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 min-h-[400px]">
-          <h3 className="text-lg font-bold text-gray-800 mb-4">Despesas por Categoria</h3>
+          <div className="mb-4">
+            <h3 className="text-lg font-bold text-gray-800 uppercase">Despesas por Categoria</h3>
+            <p className="text-xs text-gray-500 uppercase mt-1">Percentual baseado na <strong className="text-blue-600">Renda Mensal</strong></p>
+          </div>
           {categoryData.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
@@ -127,12 +169,15 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions }) => {
               </PieChart>
             </ResponsiveContainer>
           ) : (
-             <div className="h-full flex items-center justify-center text-gray-400">Sem dados neste mês</div>
+             <div className="h-full flex items-center justify-center text-gray-400 uppercase text-sm">Sem despesas neste mês</div>
           )}
         </div>
 
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 min-h-[400px]">
-          <h3 className="text-lg font-bold text-gray-800 mb-4">Despesas por Estabelecimento</h3>
+          <div className="mb-4">
+            <h3 className="text-lg font-bold text-gray-800 uppercase">Despesas por Local</h3>
+            <p className="text-xs text-gray-500 uppercase mt-1">Percentual baseado na <strong className="text-blue-600">Renda Mensal</strong></p>
+          </div>
            {establishmentData.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
@@ -160,7 +205,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions }) => {
               </PieChart>
             </ResponsiveContainer>
            ) : (
-            <div className="h-full flex items-center justify-center text-gray-400">Sem dados neste mês</div>
+            <div className="h-full flex items-center justify-center text-gray-400 uppercase text-sm">Sem despesas neste mês</div>
            )}
         </div>
       </div>

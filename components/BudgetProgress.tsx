@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Transaction, CategoryData } from '../types';
-import { formatCurrency, getCategoryColor } from '../utils';
+import { formatCurrency, getCategoryColor, normalizeCurrency } from '../utils';
 import { AlertCircle, CheckCircle, Edit2, Save, X } from 'lucide-react';
 
 interface BudgetProgressProps {
@@ -30,8 +30,8 @@ const BudgetProgress: React.FC<BudgetProgressProps> = ({ transactions, categorie
     }, {} as Record<string, number>);
 
     return categoriesWithBudget.map(cat => {
-      const spent = spendingMap[cat.name] || 0;
-      const remaining = cat.budget! - spent;
+      const spent = normalizeCurrency(spendingMap[cat.name] || 0);
+      const remaining = normalizeCurrency(cat.budget! - spent);
       const percentage = Math.min((spent / cat.budget!) * 100, 100);
       const isOverBudget = spent > cat.budget!;
 
