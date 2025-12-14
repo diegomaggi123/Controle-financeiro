@@ -31,7 +31,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   const [category, setCategory] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>('single');
-  const [frequency, setFrequency] = useState<'monthly' | 'biweekly' | 'weekly'>('monthly'); // Novo estado
+  const [frequency, setFrequency] = useState<'monthly' | 'biweekly' | 'weekly'>('monthly');
   const [installments, setInstallments] = useState('2'); 
   const [startNextMonth, setStartNextMonth] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -96,10 +96,19 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
       return;
     }
 
-    if (initialData && (initialData.recurrenceType !== 'single' || recurrenceType !== 'single')) {
-        setShowUpdateScopeModal(true);
-    } else {
-        processSave('single');
+    // Lógica corrigida:
+    // Se for EDIÇÃO (tem initialData), perguntamos o escopo se for recorrente.
+    if (initialData) {
+        if (initialData.recurrenceType !== 'single' || recurrenceType !== 'single') {
+            setShowUpdateScopeModal(true);
+        } else {
+            processSave('single');
+        }
+    } 
+    // Se for CRIAÇÃO (Novo lançamento), SEMPRE usamos 'future' para garantir
+    // que o loop de repetição (parcelas/fixo) seja executado.
+    else {
+        processSave('future');
     }
   };
 
@@ -137,6 +146,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
         if (frequency === 'biweekly') count = 26; // Quinzenal = 1 ano
         if (frequency === 'weekly') count = 52; // Semanal = 1 ano
 
+        // Se for update e escopo 'single', edita só 1. Se for create (scope vem como future), cria todos.
         if (scope === 'single') count = 1;
         
         for (let i = 0; i < count; i++) {
@@ -157,16 +167,25 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
             });
         }
     } else if (recurrenceType === 'installment') {
-        // Parcelado geralmente é mensal
-        // NOTA: Em parcelamento (Compra única dividida), a 'date' (data da compra) geralmente se mantém a mesma
-        // enquanto a 'billingDate' (vencimento) muda. Mantivemos assim para parcelado.
         const totalInstallments = parseInt(installments);
         const installmentValue = parsedAmount / totalInstallments;
         const loopCount = scope === 'single' ? 1 : totalInstallments;
 
         for (let i = 0; i < loopCount; i++) {
              const currentInstallmentNumber = scope === 'single' && initialData ? initialData.installmentCurrent : (i + 1);
-             const billDate = addMonths(startBillingDate, i);
+             
+             // Usa a frequência escolhida para calcular as datas
+             const billDate = getNextDate(startBillingDate, i, frequency);
+             
+             // Lógica da data de compra (date):
+             // Se for Mensal (padrão de cartão), mantém a data original da compra.
+             // Se for Semanal/Quinzenal, assume que é uma despesa recorrente e atualiza a data da "compra/ocorrência".
+             let currentDateStr = date;
+             if (frequency !== 'monthly') {
+                 const currentDate = getNextDate(purchaseDate, i, frequency);
+                 currentDateStr = currentDate.toISOString();
+             }
+
              const id = (initialData && scope === 'single' && i === 0) ? initialData.id : generateId();
 
              transactionsToSave.push({
@@ -176,7 +195,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                  amount: installmentValue,
                  type,
                  category,
-                 date: date, // Data da compra mantém a original
+                 date: currentDateStr, 
                  billingDate: billDate.toISOString(),
                  recurrenceType: 'installment',
                  installmentCurrent: currentInstallmentNumber,
@@ -378,8 +397,8 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
             </select>
           </div>
 
-          {/* Frequency Selector for Fixed/Repeat */}
-          {(recurrenceType === 'fixed' || recurrenceType === 'repeat') && (
+          {/* Frequency Selector - Agora visível também para Parcelado */}
+          {(recurrenceType === 'fixed' || recurrenceType === 'repeat' || recurrenceType === 'installment') && (
             <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">FREQUÊNCIA</label>
                 <select
@@ -391,6 +410,9 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                     <option value="weekly">SEMANAL</option>
                     <option value="biweekly">QUINZENAL</option>
                 </select>
+                {recurrenceType === 'installment' && frequency === 'monthly' && (
+                     <p className="text-xs text-gray-500 mt-1">Para cartão de crédito (vencimento mensal), mantenha "Mensal".</p>
+                )}
             </div>
           )}
 
