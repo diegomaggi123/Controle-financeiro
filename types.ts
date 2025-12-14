@@ -19,6 +19,7 @@ export interface Transaction {
 export interface CategoryData {
   id: string;
   name: string;
+  budget?: number; // Campo opcional para o orçamento mensal
 }
 
 export interface EstablishmentData {

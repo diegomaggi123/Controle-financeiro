@@ -1,23 +1,52 @@
 import React, { useMemo } from 'react';
-import { Transaction } from '../types';
+import { Transaction, CategoryData } from '../types';
 import { formatCurrency } from '../utils';
 import { ArrowDownCircle, ArrowUpCircle, Wallet } from 'lucide-react';
 
 interface SummaryCardsProps {
   transactions: Transaction[];
+  categories: CategoryData[];
 }
 
-const SummaryCards: React.FC<SummaryCardsProps> = ({ transactions }) => {
+const SummaryCards: React.FC<SummaryCardsProps> = ({ transactions, categories }) => {
   const summary = useMemo(() => {
-    return transactions.reduce(
-      (acc, t) => {
-        if (t.type === 'income') acc.income += t.amount;
-        else acc.expense += t.amount;
+    // 1. Calcular Receitas Reais
+    const income = transactions
+      .filter(t => t.type === 'income')
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    // 2. Mapear gastos reais por categoria neste mês
+    const expensesMap = transactions
+      .filter(t => t.type === 'expense')
+      .reduce((acc, t) => {
+        acc[t.category] = (acc[t.category] || 0) + t.amount;
         return acc;
-      },
-      { income: 0, expense: 0 }
-    );
-  }, [transactions]);
+      }, {} as Record<string, number>);
+
+    // 3. Calcular Despesa Comprometida (Lógica: O maior valor entre o Gasto Real e a Meta)
+    let committedExpense = 0;
+    const processedCategories = new Set<string>();
+
+    // Passa por todas as categorias cadastradas (para pegar as metas, mesmo que não tenha gasto ainda)
+    categories.forEach(cat => {
+      const budget = cat.budget || 0;
+      const actual = expensesMap[cat.name] || 0;
+      
+      // O "custo" dessa categoria para o saldo é o maior entre a meta e o real
+      committedExpense += Math.max(budget, actual);
+      
+      processedCategories.add(cat.name);
+    });
+
+    // Adiciona gastos de categorias que podem não estar na lista de configurações (ex: excluídas ou "Outros" sem meta)
+    Object.keys(expensesMap).forEach(catName => {
+      if (!processedCategories.has(catName)) {
+        committedExpense += expensesMap[catName];
+      }
+    });
+
+    return { income, expense: committedExpense };
+  }, [transactions, categories]);
 
   const balance = summary.income - summary.expense;
 
@@ -38,7 +67,8 @@ const SummaryCards: React.FC<SummaryCardsProps> = ({ transactions }) => {
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 relative overflow-hidden flex items-center justify-between">
          <div>
            <div className="mb-1">
-            <h3 className="text-gray-500 font-medium text-sm uppercase tracking-wider">Despesas</h3>
+            <h3 className="text-gray-500 font-medium text-sm uppercase tracking-wider">Comprometido</h3>
+            <span className="text-[10px] text-gray-400 uppercase">(Gasto Real ou Meta)</span>
           </div>
           <p className="text-2xl font-bold text-gray-800">{formatCurrency(summary.expense)}</p>
          </div>
@@ -50,7 +80,7 @@ const SummaryCards: React.FC<SummaryCardsProps> = ({ transactions }) => {
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 relative overflow-hidden flex items-center justify-between">
          <div>
            <div className="mb-1">
-            <h3 className="text-gray-500 font-medium text-sm uppercase tracking-wider">Saldo</h3>
+            <h3 className="text-gray-500 font-medium text-sm uppercase tracking-wider">Saldo Livre</h3>
           </div>
           <p className={`text-2xl font-bold ${balance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
             {formatCurrency(balance)}

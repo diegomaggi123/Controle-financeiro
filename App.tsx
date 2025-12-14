@@ -6,6 +6,7 @@ import Dashboard from './components/Dashboard';
 import Settings from './components/Settings';
 import SummaryCards from './components/SummaryCards';
 import AnnualComparison from './components/AnnualComparison';
+import BudgetProgress from './components/BudgetProgress';
 import Auth from './components/Auth';
 import { Plus, ChevronLeft, ChevronRight, Edit2, Trash2, Settings as SettingsIcon, Calendar, Repeat, Tag, BarChart3, List, LogOut, FileSpreadsheet, FileText } from 'lucide-react';
 import { format, subMonths, addMonths, parseISO, compareAsc, setMonth, setYear, subYears, addYears } from 'date-fns';
@@ -80,7 +81,7 @@ const App: React.FC = () => {
         setTransactions(mappedTransactions);
     }
 
-    // Fetch Categories
+    // Fetch Categories (assuming 'budget' column exists or handled)
     const { data: catData } = await supabase.from('categories').select('*');
     if (catData) {
       // Sort alphabetically
@@ -195,13 +196,13 @@ const App: React.FC = () => {
   };
 
   // Settings Handlers (Supabase)
-  const addCategory = async (name: string) => {
+  const addCategory = async (name: string, budget: number = 0) => {
       if (!session) return;
-      await supabase.from('categories').insert([{ name, user_id: session.user.id }]);
+      await supabase.from('categories').insert([{ name, budget, user_id: session.user.id }]);
       fetchData();
   };
-  const updateCategory = async (id: string, name: string) => {
-      await supabase.from('categories').update({ name }).eq('id', id);
+  const updateCategory = async (id: string, name: string, budget: number = 0) => {
+      await supabase.from('categories').update({ name, budget }).eq('id', id);
       fetchData();
   };
   const deleteCategory = async (id: string) => {
@@ -389,7 +390,10 @@ const App: React.FC = () => {
         ) : (
             <>
                 {/* Summary Cards */}
-                <SummaryCards transactions={filteredTransactions} />
+                <SummaryCards transactions={filteredTransactions} categories={categories} />
+                
+                {/* Budget Progress (Planning) */}
+                <BudgetProgress transactions={filteredTransactions} categories={categories} />
 
                 {/* Transaction List */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -525,7 +529,7 @@ const App: React.FC = () => {
         initialData={editingTransaction}
         categories={categories}
         establishments={establishments}
-        onAddCategory={addCategory}
+        onAddCategory={(name) => addCategory(name, 0)}
         onAddEstablishment={addEstablishment}
       />
 
