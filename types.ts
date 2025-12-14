@@ -1,6 +1,6 @@
 export type TransactionType = 'income' | 'expense';
 
-export type RecurrenceType = 'single' | 'installment' | 'fixed';
+export type RecurrenceType = 'single' | 'installment' | 'fixed' | 'repeat';
 
 export interface Transaction {
   id: string;

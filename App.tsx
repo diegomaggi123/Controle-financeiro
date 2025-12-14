@@ -407,7 +407,7 @@ const App: React.FC = () => {
                                 </span>
                             </td>
                             <td className="p-4 text-sm text-gray-500">
-                                {t.recurrenceType === 'installment' && (
+                                {(t.recurrenceType === 'installment' || t.recurrenceType === 'repeat') && (
                                 <span className="flex items-center gap-1">
                                     <Repeat size={14} />
                                     {t.installmentCurrent}/{t.installmentTotal}

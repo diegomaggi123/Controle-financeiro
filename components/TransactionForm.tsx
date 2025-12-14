@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Transaction, RecurrenceType, TransactionType, CategoryData, EstablishmentData } from '../types';
-import { generateId, addMonthsToDate, formatDateForInput } from '../utils';
+import { generateId, addMonthsToDate, formatDateForInput, formatCurrency } from '../utils';
 import { X, Plus, Trash2 } from 'lucide-react';
 import { addMonths, parseISO } from 'date-fns';
 
@@ -31,7 +31,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   const [category, setCategory] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>('single');
-  const [installments, setInstallments] = useState('2');
+  const [installments, setInstallments] = useState('2'); // Usado tanto para parcelas quanto para meses de repetição
   const [startNextMonth, setStartNextMonth] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [showAddCategory, setShowAddCategory] = useState(false);
@@ -47,7 +47,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
       setDate(formatDateForInput(initialData.date)); // Use purchase date
       setRecurrenceType(initialData.recurrenceType);
       
-      if (initialData.recurrenceType === 'installment') {
+      if (initialData.recurrenceType === 'installment' || initialData.recurrenceType === 'repeat') {
         setInstallments(initialData.installmentTotal?.toString() || '2');
       }
 
@@ -160,6 +160,31 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                  installmentTotal: totalInstallments
              });
         }
+    } else if (recurrenceType === 'repeat') {
+        // Nova lógica: Valor Mensal se repete X vezes
+        const totalRepeats = parseInt(installments);
+        // Aqui o valor NÃO é dividido. O parsedAmount é o valor mensal.
+        const loopCount = scope === 'single' ? 1 : totalRepeats;
+
+        for (let i = 0; i < loopCount; i++) {
+            const currentNumber = scope === 'single' && initialData ? initialData.installmentCurrent : (i + 1);
+            const billDate = addMonths(startBillingDate, i);
+            const id = (initialData && scope === 'single' && i === 0) ? initialData.id : generateId();
+
+            transactionsToSave.push({
+                id,
+                groupId: baseGroupId,
+                description,
+                amount: parsedAmount, 
+                type,
+                category,
+                date: date,
+                billingDate: billDate.toISOString(),
+                recurrenceType: 'repeat',
+                installmentCurrent: currentNumber,
+                installmentTotal: totalRepeats
+            });
+       }
     }
 
     onSave(transactionsToSave, initialData ? 'update' : 'create', initialData || undefined, scope);
@@ -174,7 +199,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
       {showUpdateScopeModal ? (
          <div className="bg-white rounded-lg p-6 w-full max-w-sm shadow-xl">
              <h3 className="text-lg font-bold mb-4 text-gray-800">Aplicar alterações</h3>
-             <p className="mb-6 text-gray-600">Você está alterando uma transação recorrente ou parcelada. Como deseja aplicar?</p>
+             <p className="mb-6 text-gray-600">Você está alterando uma transação recorrente. Como deseja aplicar?</p>
              <div className="flex flex-col gap-3">
                  <button 
                     onClick={() => processSave('single')}
@@ -231,7 +256,9 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
 
           {/* Amount */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Valor Total</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+                {recurrenceType === 'installment' ? 'Valor Total da Compra' : 'Valor do Lançamento'}
+            </label>
             <div className="relative">
               <span className="absolute left-3 top-2.5 text-gray-500">R$</span>
               <input
@@ -304,7 +331,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
 
           {/* Date */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Data da Compra</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Data</label>
             <input
               type="date"
               value={date}
@@ -322,15 +349,18 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
               className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
             >
               <option value="single">À Vista (Único)</option>
-              <option value="installment">Parcelado</option>
-              <option value="fixed">Fixo (Mensal)</option>
+              <option value="installment">Parcelado (Valor Total / Vezes)</option>
+              <option value="repeat">Repetir (Valor Mensal x Vezes)</option>
+              <option value="fixed">Fixo (Mensal Indefinido)</option>
             </select>
           </div>
 
-          {/* Installments specific input */}
-          {recurrenceType === 'installment' && (
+          {/* Installments/Repeat specific input */}
+          {(recurrenceType === 'installment' || recurrenceType === 'repeat') && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Quantidade de Parcelas</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {recurrenceType === 'installment' ? 'Quantidade de Parcelas' : 'Quantidade de Meses'}
+              </label>
               <input
                 type="number"
                 min="2"
@@ -340,7 +370,11 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                 className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
               />
               <p className="text-xs text-gray-500 mt-1">
-                 Valor por parcela: {amount && installments ? formatCurrency(parseFloat(amount) / parseInt(installments)) : 'R$ 0,00'}
+                 {recurrenceType === 'installment' && amount && installments ? (
+                     `Valor da parcela: ${formatCurrency(parseFloat(amount) / parseInt(installments))}`
+                 ) : recurrenceType === 'repeat' && amount && installments ? (
+                     `Valor total do período: ${formatCurrency(parseFloat(amount) * parseInt(installments))}`
+                 ) : ''}
               </p>
             </div>
           )}
@@ -355,8 +389,8 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
               className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
             />
             <label htmlFor="startNextMonth" className="text-sm text-gray-700 select-none">
-              {recurrenceType === 'installment' 
-                ? 'Primeira parcela somente no mês seguinte'
+              {(recurrenceType === 'installment' || recurrenceType === 'repeat')
+                ? 'Primeira cobrança somente no mês seguinte'
                 : 'Cobrança somente no mês seguinte'}
             </label>
           </div>
@@ -382,12 +416,5 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     </div>
   );
 };
-
-function formatCurrency(value: number): React.ReactNode {
-    return new Intl.NumberFormat('pt-BR', {
-        style: 'currency',
-        currency: 'BRL',
-    }).format(value);
-}
 
 export default TransactionForm;
