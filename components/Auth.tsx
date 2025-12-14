@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { supabase } from '../supabaseClient';
-import { Lock, Mail, Loader2, CheckSquare, Square } from 'lucide-react';
+import { Lock, Mail, Loader2, CheckSquare, Square, Wallet } from 'lucide-react';
 
 export default function Auth() {
   const [loading, setLoading] = useState(false);
@@ -33,7 +33,7 @@ export default function Auth() {
       <div className="max-w-md w-full bg-white rounded-xl shadow-lg p-8">
         <div className="text-center mb-8">
           <div className="bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Lock className="text-blue-600" size={32} />
+            <Wallet className="text-blue-600" size={32} />
           </div>
           <h2 className="text-2xl font-bold text-gray-800">Controle Financeiro Diego</h2>
           <p className="text-gray-500">Bem-vindo de volta</p>

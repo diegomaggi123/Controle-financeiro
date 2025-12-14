@@ -247,15 +247,25 @@ const App: React.FC = () => {
       <header className="bg-blue-800 text-white sticky top-0 z-30 shadow-md transition-all">
         <div className="max-w-5xl mx-auto px-4 py-2 flex flex-col md:flex-row items-center justify-between gap-2 md:gap-0">
           
-          {/* Left: Title + Mobile Settings */}
+          {/* Left: Title + Mobile Settings/Logout */}
           <div className="flex w-full md:w-auto items-center justify-between">
               <h1 className="text-lg font-bold truncate">Controle Financeiro Diego</h1>
-              <button 
-                  onClick={() => setIsSettingsOpen(true)}
-                  className="p-1 hover:bg-blue-700 rounded-full md:hidden"
-              >
-                  <SettingsIcon size={20} />
-              </button>
+              <div className="flex gap-2 md:hidden">
+                  <button 
+                      onClick={() => setIsSettingsOpen(true)}
+                      className="p-1 hover:bg-blue-700 rounded-full"
+                      title="Configurações"
+                  >
+                      <SettingsIcon size={20} />
+                  </button>
+                  <button 
+                    onClick={handleLogout}
+                    className="p-1 hover:bg-blue-700 rounded-full"
+                    title="Sair"
+                  >
+                    <LogOut size={20} />
+                  </button>
+              </div>
           </div>
           
           {/* Center: Navigation */}
@@ -313,7 +323,7 @@ const App: React.FC = () => {
             </button>
           </div>
 
-          {/* Right: View Toggle + Settings */}
+          {/* Right: View Toggle + Settings + Logout (Desktop) */}
           <div className="flex items-center gap-2">
             <button
                 onClick={() => setViewMode(viewMode === 'monthly' ? 'annual' : 'monthly')}
@@ -334,7 +344,7 @@ const App: React.FC = () => {
             </button>
              <button 
                 onClick={handleLogout}
-                className="p-2 hover:bg-blue-700 rounded-full"
+                className="p-2 hover:bg-blue-700 rounded-full hidden md:block"
                 title="Sair"
             >
                 <LogOut size={20} />
