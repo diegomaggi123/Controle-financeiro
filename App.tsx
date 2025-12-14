@@ -230,7 +230,17 @@ const App: React.FC = () => {
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    try {
+        await supabase.auth.signOut();
+    } catch (error) {
+        console.error("Erro ao fazer logout:", error);
+    } finally {
+        // Force local state update to ensure UI reflects logout immediately
+        setSession(null);
+        setTransactions([]);
+        setCategories([]);
+        setEstablishments([]);
+    }
   };
 
   if (isLoadingSession) {
