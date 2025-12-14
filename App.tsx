@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Transaction, CategoryData, EstablishmentData } from './types';
+import { Transaction, CategoryData, EstablishmentData, MonthlyBudget } from './types';
 import { generateId, formatCurrency, formatDate, getMonthYearKey, getCategoryColor, exportToExcel, exportToPDF } from './utils';
 import TransactionForm from './components/TransactionForm';
 import Dashboard from './components/Dashboard';
@@ -24,6 +24,7 @@ const App: React.FC = () => {
   // App State
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<CategoryData[]>([]);
+  const [monthlyBudgets, setMonthlyBudgets] = useState<MonthlyBudget[]>([]); // Novo estado
   const [establishments, setEstablishments] = useState<EstablishmentData[]>([]);
 
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -49,6 +50,7 @@ const App: React.FC = () => {
       else {
           setTransactions([]);
           setCategories([]);
+          setMonthlyBudgets([]);
           setEstablishments([]);
       }
     });
@@ -57,8 +59,6 @@ const App: React.FC = () => {
   }, []);
 
   const fetchData = async () => {
-    // RLS in Supabase will automatically filter by the logged-in user
-    
     // Fetch Transactions
     const { data: transData, error: transError } = await supabase
         .from('transactions')
@@ -81,18 +81,22 @@ const App: React.FC = () => {
         setTransactions(mappedTransactions);
     }
 
-    // Fetch Categories (assuming 'budget' column exists or handled)
+    // Fetch Categories
     const { data: catData } = await supabase.from('categories').select('*');
     if (catData) {
-      // Sort alphabetically
       const sortedCats = catData.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
       setCategories(sortedCats);
+    }
+
+    // Fetch Monthly Budgets
+    const { data: mbData } = await supabase.from('monthly_budgets').select('*');
+    if (mbData) {
+        setMonthlyBudgets(mbData);
     }
 
     // Fetch Establishments
     const { data: estData } = await supabase.from('establishments').select('*');
     if (estData) {
-      // Sort alphabetically
       const sortedEsts = estData.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
       setEstablishments(sortedEsts);
     }
@@ -103,13 +107,30 @@ const App: React.FC = () => {
   }, [session]);
 
   // Derived State
+  const currentMonthKey = getMonthYearKey(currentDate);
+
   const filteredTransactions = useMemo(() => {
-    const targetKey = getMonthYearKey(currentDate);
     // Filter by billingDate, sort by purchase date
     return transactions
-      .filter(t => t.billingDate.startsWith(targetKey))
+      .filter(t => t.billingDate.startsWith(currentMonthKey))
       .sort((a, b) => compareAsc(parseISO(a.date), parseISO(b.date)));
-  }, [transactions, currentDate]);
+  }, [transactions, currentDate, currentMonthKey]);
+
+  // Merge Categories with Monthly Budgets for the current view
+  const effectiveCategories = useMemo(() => {
+    return categories.map(cat => {
+        // Tenta encontrar um orçamento específico para este mês
+        const specificBudget = monthlyBudgets.find(
+            mb => mb.category_id === cat.id && mb.month_year === currentMonthKey
+        );
+        
+        return {
+            ...cat,
+            // Se existir específico usa ele, senão usa o padrão
+            budget: specificBudget ? specificBudget.amount : cat.budget
+        };
+    });
+  }, [categories, monthlyBudgets, currentMonthKey]);
 
   const currentMonthName = format(currentDate, 'MMMM yyyy', { locale: ptBR });
   const currentYearVal = currentDate.getFullYear();
@@ -201,10 +222,34 @@ const App: React.FC = () => {
       await supabase.from('categories').insert([{ name, budget, user_id: session.user.id }]);
       fetchData();
   };
-  const updateCategory = async (id: string, name: string, budget: number = 0) => {
-      await supabase.from('categories').update({ name, budget }).eq('id', id);
+  
+  const updateCategory = async (id: string, name: string, budget: number = 0, scope: 'single' | 'future' = 'future') => {
+      if (!session) return;
+      
+      // Update Name always
+      await supabase.from('categories').update({ name }).eq('id', id);
+
+      if (scope === 'future') {
+        // Atualiza o padrão
+        await supabase.from('categories').update({ budget }).eq('id', id);
+        
+        // Opcional: Remover overrides futuros? Por enquanto, mantemos simples.
+      } else {
+        // Atualiza apenas para o mês atual (Upsert na tabela monthly_budgets)
+        const payload = {
+            category_id: id,
+            month_year: currentMonthKey,
+            amount: budget,
+            user_id: session.user.id
+        };
+        
+        // Usando onConflict para fazer upsert
+        await supabase.from('monthly_budgets').upsert(payload, { onConflict: 'category_id, month_year' });
+      }
+
       fetchData();
   };
+
   const deleteCategory = async (id: string) => {
       await supabase.from('categories').delete().eq('id', id);
       fetchData();
@@ -390,10 +435,11 @@ const App: React.FC = () => {
         ) : (
             <>
                 {/* Summary Cards */}
-                <SummaryCards transactions={filteredTransactions} categories={categories} />
+                {/* Nota: Passamos effectiveCategories, que contem o budget mesclado (padrão x específico) */}
+                <SummaryCards transactions={filteredTransactions} categories={effectiveCategories} />
                 
                 {/* Budget Progress (Planning) */}
-                <BudgetProgress transactions={filteredTransactions} categories={categories} />
+                <BudgetProgress transactions={filteredTransactions} categories={effectiveCategories} />
 
                 {/* Transaction List */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -535,7 +581,7 @@ const App: React.FC = () => {
 
       {isSettingsOpen && (
         <Settings 
-            categories={categories}
+            categories={effectiveCategories} // Passa as categorias com o budget EFETIVO (mas a edição vai perguntar o escopo)
             establishments={establishments}
             onClose={() => setIsSettingsOpen(false)}
             onAddCategory={addCategory}
@@ -544,6 +590,7 @@ const App: React.FC = () => {
             onAddEstablishment={addEstablishment}
             onUpdateEstablishment={updateEstablishment}
             onDeleteEstablishment={deleteEstablishment}
+            currentMonthName={currentMonthName} // Passa o mês atual para o modal
         />
       )}
 

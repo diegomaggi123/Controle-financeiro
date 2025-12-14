@@ -19,7 +19,14 @@ export interface Transaction {
 export interface CategoryData {
   id: string;
   name: string;
-  budget?: number; // Campo opcional para o orçamento mensal
+  budget?: number; // Orçamento padrão
+}
+
+export interface MonthlyBudget {
+  id: string;
+  category_id: string;
+  month_year: string; // 'YYYY-MM'
+  amount: number;
 }
 
 export interface EstablishmentData {
