@@ -230,12 +230,52 @@ const App: React.FC = () => {
       await supabase.from('categories').update({ name }).eq('id', id);
 
       if (scope === 'future') {
-        // Atualiza o padrão
+        // LOGICA DE "NOVO PADRÃO" (DAQUI PRA FRENTE)
+        // Precisamos garantir que o passado NÃO mude.
+        // Se mudarmos o categories.budget direto, todos os meses passados que não tem monthly_budget mudarão.
+        // Solução: Preencher os monthly_budgets dos meses anteriores com o valor VELHO antes de atualizar o novo.
+        
+        const category = categories.find(c => c.id === id);
+        const oldBudget = category?.budget || 0;
+
+        if (oldBudget !== budget) {
+            // Congelar histórico: Vamos olhar para os ultimos 24 meses para garantir
+            // que o histórico recente fique intacto.
+            const monthsToFreeze = [];
+            let iterDate = subMonths(currentDate, 1); // Começa do mês passado para trás
+            
+            for (let i = 0; i < 24; i++) {
+                const mKey = getMonthYearKey(iterDate);
+                
+                // Verifica se já existe um orçamento específico (se já existe, não mexe)
+                const hasSpecific = monthlyBudgets.some(mb => mb.category_id === id && mb.month_year === mKey);
+                
+                if (!hasSpecific) {
+                    monthsToFreeze.push({
+                        user_id: session.user.id,
+                        category_id: id,
+                        month_year: mKey,
+                        amount: oldBudget // Trava com o valor ANTIGO
+                    });
+                }
+                iterDate = subMonths(iterDate, 1);
+            }
+
+            if (monthsToFreeze.length > 0) {
+                await supabase.from('monthly_budgets').insert(monthsToFreeze);
+            }
+        }
+
+        // Atualiza o padrão global (que afetará o futuro e buracos no passado além dos 24 meses)
         await supabase.from('categories').update({ budget }).eq('id', id);
         
-        // Opcional: Remover overrides futuros? Por enquanto, mantemos simples.
+        // Remove qualquer override do mês atual para garantir que ele assuma o novo padrão global
+        await supabase.from('monthly_budgets').delete()
+            .eq('category_id', id)
+            .eq('month_year', currentMonthKey);
+
       } else {
-        // Atualiza apenas para o mês atual (Upsert na tabela monthly_budgets)
+        // Escopo Single: Apenas o mês atual
         const payload = {
             category_id: id,
             month_year: currentMonthKey,
@@ -297,6 +337,8 @@ const App: React.FC = () => {
     }
   };
 
+  // --- Export Functions ---
+
   const handleExportExcel = () => {
       const fileName = `financeiro_${format(currentDate, 'yyyy_MM')}`;
       exportToExcel(filteredTransactions, fileName);
@@ -305,6 +347,21 @@ const App: React.FC = () => {
   const handleExportPDF = () => {
       const title = `Relatório ${currentMonthName}`;
       exportToPDF(filteredTransactions, title.toUpperCase());
+  };
+
+  // Exportação Anual
+  const handleExportAnnualExcel = () => {
+      const yearKey = currentYearVal.toString();
+      const annualTransactions = transactions.filter(t => t.billingDate.startsWith(yearKey));
+      const fileName = `financeiro_anual_${yearKey}`;
+      exportToExcel(annualTransactions, fileName);
+  };
+
+  const handleExportAnnualPDF = () => {
+      const yearKey = currentYearVal.toString();
+      const annualTransactions = transactions.filter(t => t.billingDate.startsWith(yearKey));
+      const title = `Relatório Anual ${yearKey}`;
+      exportToPDF(annualTransactions, title.toUpperCase());
   };
 
   if (isLoadingSession) {
@@ -431,7 +488,12 @@ const App: React.FC = () => {
       <main className="max-w-5xl mx-auto px-4 py-6 space-y-8">
         
         {viewMode === 'annual' ? (
-             <AnnualComparison transactions={transactions} currentYear={currentDate} />
+             <AnnualComparison 
+                transactions={transactions} 
+                currentYear={currentDate} 
+                onExportExcel={handleExportAnnualExcel}
+                onExportPDF={handleExportAnnualPDF}
+             />
         ) : (
             <>
                 {/* Summary Cards */}
@@ -439,7 +501,12 @@ const App: React.FC = () => {
                 <SummaryCards transactions={filteredTransactions} categories={effectiveCategories} />
                 
                 {/* Budget Progress (Planning) */}
-                <BudgetProgress transactions={filteredTransactions} categories={effectiveCategories} />
+                <BudgetProgress 
+                    transactions={filteredTransactions} 
+                    categories={effectiveCategories}
+                    onUpdateCategory={updateCategory}
+                    currentMonthName={currentMonthName}
+                />
 
                 {/* Transaction List */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">

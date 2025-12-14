@@ -141,6 +141,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
         
         for (let i = 0; i < count; i++) {
             const billDate = getNextDate(startBillingDate, i, frequency);
+            const currentDate = getNextDate(purchaseDate, i, frequency); // Calcula também a data da compra
             const id = (initialData && scope === 'single' && i === 0) ? initialData.id : generateId();
 
             transactionsToSave.push({
@@ -150,13 +151,15 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                 amount: parsedAmount,
                 type,
                 category,
-                date: date,
+                date: currentDate.toISOString(), // Usa a data calculada
                 billingDate: billDate.toISOString(),
                 recurrenceType: 'fixed'
             });
         }
     } else if (recurrenceType === 'installment') {
         // Parcelado geralmente é mensal
+        // NOTA: Em parcelamento (Compra única dividida), a 'date' (data da compra) geralmente se mantém a mesma
+        // enquanto a 'billingDate' (vencimento) muda. Mantivemos assim para parcelado.
         const totalInstallments = parseInt(installments);
         const installmentValue = parsedAmount / totalInstallments;
         const loopCount = scope === 'single' ? 1 : totalInstallments;
@@ -173,7 +176,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                  amount: installmentValue,
                  type,
                  category,
-                 date: date,
+                 date: date, // Data da compra mantém a original
                  billingDate: billDate.toISOString(),
                  recurrenceType: 'installment',
                  installmentCurrent: currentInstallmentNumber,
@@ -188,6 +191,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
             const currentNumber = scope === 'single' && initialData ? initialData.installmentCurrent : (i + 1);
             // Usa a frequência escolhida
             const billDate = getNextDate(startBillingDate, i, frequency);
+            const currentDate = getNextDate(purchaseDate, i, frequency); // Calcula também a data da compra
             const id = (initialData && scope === 'single' && i === 0) ? initialData.id : generateId();
 
             transactionsToSave.push({
@@ -197,7 +201,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                 amount: parsedAmount, 
                 type,
                 category,
-                date: date,
+                date: currentDate.toISOString(), // Usa a data calculada
                 billingDate: billDate.toISOString(),
                 recurrenceType: 'repeat',
                 installmentCurrent: currentNumber,
