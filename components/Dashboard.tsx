@@ -1,4 +1,3 @@
-
 import React, { useMemo } from 'react';
 import { Transaction } from '../types';
 import { formatCurrency } from '../utils';
@@ -9,7 +8,7 @@ interface DashboardProps {
   currentMonthName: string;
 }
 
-const COLORS = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#6366f1', '#14b8a6'];
+const COLORS = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#6366f1', '#14b8a6', '#06b6d4', '#84cc16', '#64748b'];
 
 const Dashboard: React.FC<DashboardProps> = ({ transactions }) => {
   const categoryData = useMemo(() => {
@@ -32,20 +31,45 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions }) => {
 
   const establishmentData = useMemo(() => {
     const expenses = transactions.filter(t => t.type === 'expense');
+    
+    // 1. Agrupar valores
     const grouped = expenses.reduce((acc, t) => {
       acc[t.description] = (acc[t.description] || 0) + t.amount;
       return acc;
     }, {} as Record<string, number>);
 
+    // Total Geral para cálculo de porcentagem
     const total = (Object.values(grouped) as number[]).reduce((a, b) => a + b, 0);
 
-    return Object.entries(grouped)
+    // 2. Criar array inicial ordenado
+    let sortedData = Object.entries(grouped)
       .map(([name, value]: [string, number]) => ({
         name,
         value,
-        percentage: total > 0 ? ((value / total) * 100).toFixed(1) + '%' : '0%'
+        percentage: '' // Será calculado no final
       }))
-      .sort((a, b) => b.value - a.value); // Ordem decrescente (Maior para menor)
+      .sort((a, b) => b.value - a.value);
+
+    // 3. Limitar a 10 itens e agrupar o restante
+    if (sortedData.length > 10) {
+      const top10 = sortedData.slice(0, 10);
+      const others = sortedData.slice(10);
+      const othersTotal = others.reduce((acc, item) => acc + item.value, 0);
+
+      top10.push({
+        name: 'Outros estabelecimentos',
+        value: othersTotal,
+        percentage: ''
+      });
+
+      sortedData = top10;
+    }
+
+    // 4. Calcular porcentagens finais baseadas no total geral
+    return sortedData.map(item => ({
+      ...item,
+      percentage: total > 0 ? ((item.value / total) * 100).toFixed(1) + '%' : '0%'
+    }));
   }, [transactions]);
 
   const CustomTooltip = ({ active, payload }: any) => {

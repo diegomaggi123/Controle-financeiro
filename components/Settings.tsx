@@ -32,21 +32,23 @@ const Settings: React.FC<SettingsProps> = ({
 
   const handleStartEdit = (id: string, currentName: string) => {
     setEditingId(id);
-    setEditValue(currentName);
+    setEditValue(currentName.toUpperCase());
   };
 
   const handleSaveEdit = (type: 'cat' | 'est') => {
     if (!editingId || !editValue.trim()) return;
-    if (type === 'cat') onUpdateCategory(editingId, editValue.trim());
-    else onUpdateEstablishment(editingId, editValue.trim());
+    const upperValue = editValue.trim().toUpperCase();
+    if (type === 'cat') onUpdateCategory(editingId, upperValue);
+    else onUpdateEstablishment(editingId, upperValue);
     setEditingId(null);
     setEditValue('');
   };
 
   const handleAdd = (type: 'cat' | 'est') => {
     if (!newValue.trim()) return;
-    if (type === 'cat') onAddCategory(newValue.trim());
-    else onAddEstablishment(newValue.trim());
+    const upperValue = newValue.trim().toUpperCase();
+    if (type === 'cat') onAddCategory(upperValue);
+    else onAddEstablishment(upperValue);
     setNewValue('');
   };
 
@@ -54,7 +56,7 @@ const Settings: React.FC<SettingsProps> = ({
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl h-[80vh] flex flex-col">
         <div className="flex justify-between items-center p-4 border-b">
-          <h2 className="text-xl font-bold text-gray-800">Gerenciar Listas</h2>
+          <h2 className="text-xl font-bold text-gray-800 uppercase">Gerenciar Listas</h2>
           <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full">
             <X size={24} />
           </button>
@@ -62,13 +64,13 @@ const Settings: React.FC<SettingsProps> = ({
 
         <div className="flex border-b">
           <button
-            className={`flex-1 py-3 font-medium ${activeTab === 'categories' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+            className={`flex-1 py-3 font-medium uppercase ${activeTab === 'categories' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
             onClick={() => setActiveTab('categories')}
           >
             Categorias
           </button>
           <button
-            className={`flex-1 py-3 font-medium ${activeTab === 'establishments' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+            className={`flex-1 py-3 font-medium uppercase ${activeTab === 'establishments' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
             onClick={() => setActiveTab('establishments')}
           >
             Descrições / Locais
@@ -80,9 +82,9 @@ const Settings: React.FC<SettingsProps> = ({
             <input 
                 type="text" 
                 value={newValue} 
-                onChange={(e) => setNewValue(e.target.value)}
-                placeholder={activeTab === 'categories' ? "Nova Categoria..." : "Novo Local..."}
-                className="flex-1 p-2 border rounded-lg"
+                onChange={(e) => setNewValue(e.target.value.toUpperCase())}
+                placeholder={activeTab === 'categories' ? "NOVA CATEGORIA..." : "NOVO LOCAL..."}
+                className="flex-1 p-2 border rounded-lg uppercase"
             />
             <button 
                 onClick={() => handleAdd(activeTab === 'categories' ? 'cat' : 'est')}
@@ -100,15 +102,15 @@ const Settings: React.FC<SettingsProps> = ({
                         <input 
                             type="text" 
                             value={editValue} 
-                            onChange={(e) => setEditValue(e.target.value)}
-                            className="flex-1 p-1 border rounded"
+                            onChange={(e) => setEditValue(e.target.value.toUpperCase())}
+                            className="flex-1 p-1 border rounded uppercase"
                         />
                         <button onClick={() => handleSaveEdit(activeTab === 'categories' ? 'cat' : 'est')} className="text-green-600"><Save size={20} /></button>
                         <button onClick={() => setEditingId(null)} className="text-gray-500"><X size={20} /></button>
                     </div>
                 ) : (
                     <>
-                        <span className="text-gray-800 font-medium">{item.name}</span>
+                        <span className="text-gray-800 font-medium uppercase">{item.name}</span>
                         <div className="flex gap-2">
                             <button onClick={() => handleStartEdit(item.id, item.name)} className="text-blue-500 hover:bg-blue-100 p-1 rounded"><Edit2 size={18} /></button>
                             <button onClick={() => activeTab === 'categories' ? onDeleteCategory(item.id) : onDeleteEstablishment(item.id)} className="text-red-500 hover:bg-red-100 p-1 rounded"><Trash2 size={18} /></button>

@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Transaction, CategoryData, EstablishmentData } from './types';
-import { generateId, formatCurrency, formatDate, getMonthYearKey, getCategoryColor } from './utils';
+import { generateId, formatCurrency, formatDate, getMonthYearKey, getCategoryColor, exportToExcel, exportToPDF } from './utils';
 import TransactionForm from './components/TransactionForm';
 import Dashboard from './components/Dashboard';
 import Settings from './components/Settings';
 import SummaryCards from './components/SummaryCards';
 import AnnualComparison from './components/AnnualComparison';
 import Auth from './components/Auth';
-import { Plus, ChevronLeft, ChevronRight, Edit2, Trash2, Settings as SettingsIcon, Calendar, Repeat, Tag, BarChart3, List, LogOut } from 'lucide-react';
+import { Plus, ChevronLeft, ChevronRight, Edit2, Trash2, Settings as SettingsIcon, Calendar, Repeat, Tag, BarChart3, List, LogOut, FileSpreadsheet, FileText } from 'lucide-react';
 import { format, subMonths, addMonths, parseISO, compareAsc, setMonth, setYear, subYears, addYears } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { supabase } from './supabaseClient';
@@ -82,11 +82,19 @@ const App: React.FC = () => {
 
     // Fetch Categories
     const { data: catData } = await supabase.from('categories').select('*');
-    if (catData) setCategories(catData);
+    if (catData) {
+      // Sort alphabetically
+      const sortedCats = catData.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+      setCategories(sortedCats);
+    }
 
     // Fetch Establishments
     const { data: estData } = await supabase.from('establishments').select('*');
-    if (estData) setEstablishments(estData);
+    if (estData) {
+      // Sort alphabetically
+      const sortedEsts = estData.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+      setEstablishments(sortedEsts);
+    }
   };
 
   useEffect(() => {
@@ -243,6 +251,16 @@ const App: React.FC = () => {
     }
   };
 
+  const handleExportExcel = () => {
+      const fileName = `financeiro_${format(currentDate, 'yyyy_MM')}`;
+      exportToExcel(filteredTransactions, fileName);
+  };
+
+  const handleExportPDF = () => {
+      const title = `Relatório ${currentMonthName}`;
+      exportToPDF(filteredTransactions, title.toUpperCase());
+  };
+
   if (isLoadingSession) {
       return <div className="min-h-screen flex items-center justify-center bg-gray-50 text-blue-800">Carregando...</div>;
   }
@@ -289,7 +307,7 @@ const App: React.FC = () => {
             
             <div className="relative group mx-2 min-w-[150px] text-center flex items-center justify-center">
                 <span 
-                    className="font-semibold capitalize text-lg text-center block select-none px-2 py-1"
+                    className="font-semibold capitalize text-lg text-center block select-none px-2 py-1 uppercase"
                 >
                     {viewMode === 'monthly' ? currentMonthName : `Ano ${currentYearVal}`}
                 </span>
@@ -298,12 +316,12 @@ const App: React.FC = () => {
                     <select
                         value={currentDate.getMonth()}
                         onChange={handleMonthSelectChange}
-                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10 appearance-none text-black"
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10 appearance-none text-black uppercase"
                         title="Alterar mês"
                     >
                         {Array.from({ length: 12 }, (_, i) => i).map((monthIndex) => {
                             const monthName = format(new Date(currentDate.getFullYear(), monthIndex, 1), 'MMMM', { locale: ptBR });
-                            const capitalizedMonth = monthName.charAt(0).toUpperCase() + monthName.slice(1);
+                            const capitalizedMonth = monthName.toUpperCase();
                             return (
                                 <option key={monthIndex} value={monthIndex}>
                                     {capitalizedMonth}
@@ -337,7 +355,7 @@ const App: React.FC = () => {
           <div className="flex items-center gap-2">
             <button
                 onClick={() => setViewMode(viewMode === 'monthly' ? 'annual' : 'monthly')}
-                className="flex items-center gap-2 bg-blue-700 px-3 py-1 rounded text-sm hover:bg-blue-600 transition-colors hidden md:flex"
+                className="flex items-center gap-2 bg-blue-700 px-3 py-1 rounded text-sm hover:bg-blue-600 transition-colors hidden md:flex uppercase"
             >
                 {viewMode === 'monthly' ? (
                     <><BarChart3 size={16} /> Anual</>
@@ -376,14 +394,30 @@ const App: React.FC = () => {
                 {/* Transaction List */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                 <div className="p-4 border-b flex justify-between items-center bg-gray-50">
-                    <h2 className="text-lg font-bold text-gray-800">Lançamentos</h2>
-                    <span className="text-sm text-gray-500">{filteredTransactions.length} registros</span>
+                    <h2 className="text-lg font-bold text-gray-800 uppercase">Lançamentos</h2>
+                    <div className="flex gap-2 items-center">
+                        <button 
+                            onClick={handleExportExcel}
+                            className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-green-700 bg-green-50 hover:bg-green-100 rounded border border-green-200 transition-colors uppercase"
+                            title="Exportar para Excel"
+                        >
+                            <FileSpreadsheet size={16} /> Excel
+                        </button>
+                        <button 
+                            onClick={handleExportPDF}
+                            className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100 rounded border border-red-200 transition-colors uppercase"
+                            title="Exportar para PDF"
+                        >
+                            <FileText size={16} /> PDF
+                        </button>
+                        <span className="text-sm text-gray-500 ml-2 border-l pl-3">{filteredTransactions.length} registros</span>
+                    </div>
                 </div>
                 
                 <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
                     <thead>
-                        <tr className="bg-gray-50 text-gray-500 text-sm border-b">
+                        <tr className="bg-gray-50 text-gray-500 text-sm border-b uppercase">
                         <th className="p-4 font-medium">Data Compra</th>
                         <th className="p-4 font-medium">Descrição</th>
                         <th className="p-4 font-medium">Categoria</th>
@@ -408,15 +442,15 @@ const App: React.FC = () => {
                                 {formatDate(t.date)}
                                 </div>
                             </td>
-                            <td className="p-4 font-medium text-gray-800">
+                            <td className="p-4 font-medium text-gray-800 uppercase">
                                 {t.description}
                             </td>
                             <td className="p-4 text-sm">
-                                <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium ${getCategoryColor(t.category)}`}>
+                                <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium uppercase ${getCategoryColor(t.category)}`}>
                                 <Tag size={12} /> {t.category}
                                 </span>
                             </td>
-                            <td className="p-4 text-sm text-gray-500">
+                            <td className="p-4 text-sm text-gray-500 uppercase">
                                 {(t.recurrenceType === 'installment' || t.recurrenceType === 'repeat') && (
                                 <span className="flex items-center gap-1">
                                     <Repeat size={14} />
@@ -476,7 +510,7 @@ const App: React.FC = () => {
                 setEditingTransaction(null);
                 setIsFormOpen(true);
             }}
-            className="fixed bottom-6 right-6 bg-blue-800 text-white px-6 py-4 rounded-full shadow-lg hover:bg-blue-900 hover:scale-105 transition-all z-40 flex items-center gap-2 font-bold text-lg"
+            className="fixed bottom-6 right-6 bg-blue-800 text-white px-6 py-4 rounded-full shadow-lg hover:bg-blue-900 hover:scale-105 transition-all z-40 flex items-center gap-2 font-bold text-lg uppercase"
         >
             <Plus size={24} />
             Novo Lançamento
@@ -513,24 +547,24 @@ const App: React.FC = () => {
       {deleteConfirmation && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg p-6 w-full max-w-sm shadow-xl">
-                <h3 className="text-lg font-bold mb-4 text-gray-800">Confirmar Exclusão</h3>
-                <p className="mb-6 text-gray-600">Este é um item recorrente/parcelado. O que deseja excluir?</p>
+                <h3 className="text-lg font-bold mb-4 text-gray-800 uppercase">Confirmar Exclusão</h3>
+                <p className="mb-6 text-gray-600 uppercase">Este é um item recorrente/parcelado. O que deseja excluir?</p>
                 <div className="flex flex-col gap-3">
                     <button 
                         onClick={() => confirmDelete('single')}
-                        className="p-3 bg-gray-100 hover:bg-gray-200 rounded text-left font-medium"
+                        className="p-3 bg-gray-100 hover:bg-gray-200 rounded text-left font-medium uppercase"
                     >
                         Apenas este lançamento
                     </button>
                     <button 
                         onClick={() => confirmDelete('future')}
-                        className="p-3 bg-red-600 hover:bg-red-700 text-white rounded text-left font-medium"
+                        className="p-3 bg-red-600 hover:bg-red-700 text-white rounded text-left font-medium uppercase"
                     >
                         Este e os futuros
                     </button>
                     <button 
                         onClick={() => setDeleteConfirmation(null)}
-                        className="mt-2 text-sm text-gray-500 hover:underline text-center"
+                        className="mt-2 text-sm text-gray-500 hover:underline text-center uppercase"
                     >
                         Cancelar
                     </button>

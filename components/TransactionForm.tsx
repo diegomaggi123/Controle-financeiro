@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Transaction, RecurrenceType, TransactionType, CategoryData, EstablishmentData } from '../types';
 import { generateId, addMonthsToDate, formatDateForInput, formatCurrency } from '../utils';
 import { X, Plus, Trash2 } from 'lucide-react';
-import { addMonths, parseISO } from 'date-fns';
+import { addMonths, addWeeks, parseISO } from 'date-fns';
 
 interface TransactionFormProps {
   isOpen: boolean;
@@ -31,7 +31,8 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   const [category, setCategory] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>('single');
-  const [installments, setInstallments] = useState('2'); // Usado tanto para parcelas quanto para meses de repetição
+  const [frequency, setFrequency] = useState<'monthly' | 'biweekly' | 'weekly'>('monthly'); // Novo estado
+  const [installments, setInstallments] = useState('2'); 
   const [startNextMonth, setStartNextMonth] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [showAddCategory, setShowAddCategory] = useState(false);
@@ -40,12 +41,15 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
 
   useEffect(() => {
     if (initialData) {
-      setDescription(initialData.description);
+      setDescription(initialData.description.toUpperCase());
       setAmount(initialData.amount.toString());
       setType(initialData.type);
-      setCategory(initialData.category);
-      setDate(formatDateForInput(initialData.date)); // Use purchase date
+      setCategory(initialData.category); 
+      setDate(formatDateForInput(initialData.date)); 
       setRecurrenceType(initialData.recurrenceType);
+      
+      // Default frequency to monthly on edit as we don't store frequency in DB explicitly yet
+      setFrequency('monthly'); 
       
       if (initialData.recurrenceType === 'installment' || initialData.recurrenceType === 'repeat') {
         setInstallments(initialData.installmentTotal?.toString() || '2');
@@ -68,6 +72,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     setCategory(categories.length > 0 ? categories[0].name : '');
     setDate(new Date().toISOString().split('T')[0]);
     setRecurrenceType('single');
+    setFrequency('monthly');
     setInstallments('2');
     setStartNextMonth(false);
     setNewCategoryName('');
@@ -77,8 +82,9 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
 
   const handleAddCategory = () => {
     if (newCategoryName.trim()) {
-      onAddCategory(newCategoryName.trim());
-      setCategory(newCategoryName.trim());
+      const upperName = newCategoryName.trim().toUpperCase();
+      onAddCategory(upperName);
+      setCategory(upperName);
       setNewCategoryName('');
       setShowAddCategory(false);
     }
@@ -104,12 +110,20 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     const startBillingDate = startNextMonth ? addMonths(purchaseDate, 1) : purchaseDate;
     
     const parsedAmount = parseFloat(amount.replace(',', '.'));
+    const upperDescription = description.toUpperCase();
+
+    // Helper para calcular data baseado na frequência
+    const getNextDate = (startDate: Date, index: number, freq: string) => {
+        if (freq === 'weekly') return addWeeks(startDate, index);
+        if (freq === 'biweekly') return addWeeks(startDate, index * 2);
+        return addMonths(startDate, index);
+    };
 
     if (recurrenceType === 'single') {
         transactionsToSave.push({
             id: initialData && scope === 'single' ? initialData.id : generateId(),
             groupId: baseGroupId,
-            description,
+            description: upperDescription,
             amount: parsedAmount,
             type,
             category,
@@ -118,16 +132,21 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
             recurrenceType: 'single'
         });
     } else if (recurrenceType === 'fixed') {
-        const count = scope === 'single' ? 1 : 24; 
+        // Ajusta quantidade baseado na frequência para cobrir aproximadamente 1 ou 2 anos
+        let count = 24; // Mensal = 2 anos
+        if (frequency === 'biweekly') count = 26; // Quinzenal = 1 ano
+        if (frequency === 'weekly') count = 52; // Semanal = 1 ano
+
+        if (scope === 'single') count = 1;
         
         for (let i = 0; i < count; i++) {
-            const billDate = addMonths(startBillingDate, i);
+            const billDate = getNextDate(startBillingDate, i, frequency);
             const id = (initialData && scope === 'single' && i === 0) ? initialData.id : generateId();
 
             transactionsToSave.push({
                 id,
                 groupId: baseGroupId,
-                description,
+                description: upperDescription,
                 amount: parsedAmount,
                 type,
                 category,
@@ -137,6 +156,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
             });
         }
     } else if (recurrenceType === 'installment') {
+        // Parcelado geralmente é mensal
         const totalInstallments = parseInt(installments);
         const installmentValue = parsedAmount / totalInstallments;
         const loopCount = scope === 'single' ? 1 : totalInstallments;
@@ -149,7 +169,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
              transactionsToSave.push({
                  id,
                  groupId: baseGroupId,
-                 description,
+                 description: upperDescription,
                  amount: installmentValue,
                  type,
                  category,
@@ -161,20 +181,19 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
              });
         }
     } else if (recurrenceType === 'repeat') {
-        // Nova lógica: Valor Mensal se repete X vezes
         const totalRepeats = parseInt(installments);
-        // Aqui o valor NÃO é dividido. O parsedAmount é o valor mensal.
         const loopCount = scope === 'single' ? 1 : totalRepeats;
 
         for (let i = 0; i < loopCount; i++) {
             const currentNumber = scope === 'single' && initialData ? initialData.installmentCurrent : (i + 1);
-            const billDate = addMonths(startBillingDate, i);
+            // Usa a frequência escolhida
+            const billDate = getNextDate(startBillingDate, i, frequency);
             const id = (initialData && scope === 'single' && i === 0) ? initialData.id : generateId();
 
             transactionsToSave.push({
                 id,
                 groupId: baseGroupId,
-                description,
+                description: upperDescription,
                 amount: parsedAmount, 
                 type,
                 category,
@@ -238,7 +257,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
           <div className="flex gap-2 p-1 bg-gray-100 rounded-lg">
             <button
               onClick={() => setType('expense')}
-              className={`flex-1 py-2 rounded-md font-medium transition-colors ${
+              className={`flex-1 py-2 rounded-md font-medium transition-colors uppercase ${
                 type === 'expense' ? 'bg-red-500 text-white shadow' : 'text-gray-600 hover:bg-gray-200'
               }`}
             >
@@ -246,7 +265,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
             </button>
             <button
               onClick={() => setType('income')}
-              className={`flex-1 py-2 rounded-md font-medium transition-colors ${
+              className={`flex-1 py-2 rounded-md font-medium transition-colors uppercase ${
                 type === 'income' ? 'bg-green-500 text-white shadow' : 'text-gray-600 hover:bg-gray-200'
               }`}
             >
@@ -257,7 +276,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
           {/* Amount */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-                {recurrenceType === 'installment' ? 'Valor Total da Compra' : 'Valor do Lançamento'}
+                {recurrenceType === 'installment' ? 'VALOR TOTAL DA COMPRA' : 'VALOR DO LANÇAMENTO'}
             </label>
             <div className="relative">
               <span className="absolute left-3 top-2.5 text-gray-500">R$</span>
@@ -274,35 +293,35 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
 
           {/* Description (Establishment) - Free Text + Datalist */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Descrição / Estabelecimento</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">DESCRIÇÃO / ESTABELECIMENTO</label>
             <input
                 list="establishments-list"
                 type="text"
                 value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Digite ou selecione..."
-                className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                onChange={(e) => setDescription(e.target.value.toUpperCase())}
+                placeholder="DIGITE OU SELECIONE..."
+                className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white uppercase"
             />
             <datalist id="establishments-list">
                 {establishments.map(est => (
-                    <option key={est.id} value={est.name} />
+                    <option key={est.id} value={est.name.toUpperCase()} />
                 ))}
             </datalist>
           </div>
 
           {/* Category */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Categoria</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">CATEGORIA</label>
             {!showAddCategory ? (
                 <div className="flex gap-2">
                     <select
                         value={category}
                         onChange={(e) => setCategory(e.target.value)}
-                        className="flex-1 p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                        className="flex-1 p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white uppercase"
                     >
-                        <option value="">Selecione...</option>
+                        <option value="">SELECIONE...</option>
                         {categories.map(cat => (
-                            <option key={cat.id} value={cat.name}>{cat.name}</option>
+                            <option key={cat.id} value={cat.name}>{cat.name.toUpperCase()}</option>
                         ))}
                     </select>
                     <button 
@@ -318,9 +337,9 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                     <input 
                         type="text" 
                         value={newCategoryName}
-                        onChange={(e) => setNewCategoryName(e.target.value)}
-                        placeholder="Nome da categoria"
-                        className="flex-1 p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        onChange={(e) => setNewCategoryName(e.target.value.toUpperCase())}
+                        placeholder="NOME DA CATEGORIA"
+                        className="flex-1 p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 uppercase"
                         autoFocus
                     />
                     <button onClick={handleAddCategory} className="px-3 bg-green-500 text-white rounded-lg">OK</button>
@@ -331,7 +350,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
 
           {/* Date */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Data</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">DATA</label>
             <input
               type="date"
               value={date}
@@ -342,24 +361,40 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
 
           {/* Recurrence */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Repetição</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">REPETIÇÃO</label>
             <select
               value={recurrenceType}
               onChange={(e) => setRecurrenceType(e.target.value as RecurrenceType)}
-              className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+              className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white uppercase"
             >
-              <option value="single">À Vista (Único)</option>
-              <option value="installment">Parcelado (Valor Total / Vezes)</option>
-              <option value="repeat">Repetir (Valor Mensal x Vezes)</option>
-              <option value="fixed">Fixo (Mensal Indefinido)</option>
+              <option value="single">À VISTA (ÚNICO)</option>
+              <option value="installment">PARCELADO (VALOR TOTAL / VEZES)</option>
+              <option value="repeat">REPETIR (VALOR MENSAL X VEZES)</option>
+              <option value="fixed">FIXO (INDEFINIDO)</option>
             </select>
           </div>
+
+          {/* Frequency Selector for Fixed/Repeat */}
+          {(recurrenceType === 'fixed' || recurrenceType === 'repeat') && (
+            <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">FREQUÊNCIA</label>
+                <select
+                    value={frequency}
+                    onChange={(e) => setFrequency(e.target.value as any)}
+                    className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white uppercase"
+                >
+                    <option value="monthly">MENSAL</option>
+                    <option value="weekly">SEMANAL</option>
+                    <option value="biweekly">QUINZENAL</option>
+                </select>
+            </div>
+          )}
 
           {/* Installments/Repeat specific input */}
           {(recurrenceType === 'installment' || recurrenceType === 'repeat') && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {recurrenceType === 'installment' ? 'Quantidade de Parcelas' : 'Quantidade de Meses'}
+              <label className="block text-sm font-medium text-gray-700 mb-1 uppercase">
+                  {recurrenceType === 'installment' ? 'Quantidade de Parcelas' : 'Quantidade de Vezes'}
               </label>
               <input
                 type="number"
@@ -369,7 +404,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                 onChange={(e) => setInstallments(e.target.value)}
                 className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
               />
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-gray-500 mt-1 uppercase">
                  {recurrenceType === 'installment' && amount && installments ? (
                      `Valor da parcela: ${formatCurrency(parseFloat(amount) / parseInt(installments))}`
                  ) : recurrenceType === 'repeat' && amount && installments ? (
@@ -388,7 +423,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
               onChange={(e) => setStartNextMonth(e.target.checked)}
               className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
             />
-            <label htmlFor="startNextMonth" className="text-sm text-gray-700 select-none">
+            <label htmlFor="startNextMonth" className="text-sm text-gray-700 select-none uppercase">
               {(recurrenceType === 'installment' || recurrenceType === 'repeat')
                 ? 'Primeira cobrança somente no mês seguinte'
                 : 'Cobrança somente no mês seguinte'}
@@ -400,13 +435,13 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
         <div className="p-4 border-t bg-gray-50 flex gap-3 justify-end">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 font-medium"
+            className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 font-medium uppercase"
           >
             Cancelar
           </button>
           <button
             onClick={handleSubmit}
-            className="px-6 py-2 bg-blue-800 text-white rounded-lg hover:bg-blue-900 font-medium shadow-sm"
+            className="px-6 py-2 bg-blue-800 text-white rounded-lg hover:bg-blue-900 font-medium shadow-sm uppercase"
           >
             Salvar
           </button>
