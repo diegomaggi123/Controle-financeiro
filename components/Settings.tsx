@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { CategoryData, EstablishmentData } from '../types';
-import { Trash2, Edit2, Plus, X, Save } from 'lucide-react';
+import { Trash2, Edit2, Plus, X, Save, ArrowLeft } from 'lucide-react';
 import { formatCurrency } from '../utils';
 
 interface SettingsProps {
@@ -105,7 +105,7 @@ const Settings: React.FC<SettingsProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-white md:bg-black md:bg-opacity-50 flex items-center justify-center z-50 md:p-4">
       
       {/* Scope Confirmation Modal */}
       {showScopeModal && (
@@ -139,101 +139,113 @@ const Settings: React.FC<SettingsProps> = ({
         </div>
       )}
 
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl h-[80vh] flex flex-col">
-        <div className="flex justify-between items-center p-4 border-b">
-          <h2 className="text-xl font-bold text-gray-800 uppercase">Gerenciar Listas</h2>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full">
+      <div className="bg-white w-full h-full md:h-[80vh] md:max-w-2xl md:rounded-xl shadow-2xl flex flex-col">
+        <div className="flex justify-between items-center p-4 border-b shrink-0">
+          <div className="flex items-center gap-2">
+            <button onClick={onClose} className="md:hidden p-1 -ml-1 text-gray-600">
+                <ArrowLeft size={24} />
+            </button>
+            <h2 className="text-xl font-bold text-gray-800 uppercase">Configurações</h2>
+          </div>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full hidden md:block">
             <X size={24} />
           </button>
         </div>
 
-        <div className="flex border-b">
+        <div className="flex border-b shrink-0">
           <button
-            className={`flex-1 py-3 font-medium uppercase ${activeTab === 'categories' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+            className={`flex-1 py-4 md:py-3 text-sm md:text-base font-bold uppercase tracking-wide ${activeTab === 'categories' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50' : 'text-gray-500 hover:text-gray-700'}`}
             onClick={() => setActiveTab('categories')}
           >
-            Categorias e Orçamentos
+            Categorias
           </button>
           <button
-            className={`flex-1 py-3 font-medium uppercase ${activeTab === 'establishments' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+            className={`flex-1 py-4 md:py-3 text-sm md:text-base font-bold uppercase tracking-wide ${activeTab === 'establishments' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50' : 'text-gray-500 hover:text-gray-700'}`}
             onClick={() => setActiveTab('establishments')}
           >
-            Descrições / Locais
+            Locais
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4">
-          <div className="flex gap-2 mb-4 items-center">
+        <div className="flex-1 overflow-y-auto p-4 pb-24 md:pb-4">
+          
+          {/* Add New Item */}
+          <div className="flex flex-col md:flex-row gap-2 mb-6 items-stretch md:items-center bg-gray-50 p-3 rounded-lg border border-gray-200 sticky top-0 z-10">
             <input 
                 type="text" 
                 value={newValue} 
                 onChange={(e) => setNewValue(e.target.value.toUpperCase())}
                 placeholder={activeTab === 'categories' ? "NOVA CATEGORIA..." : "NOVO LOCAL..."}
-                className="flex-1 p-2 border rounded-lg uppercase h-10"
+                className="flex-1 p-3 border rounded-lg uppercase h-12 outline-none focus:ring-2 focus:ring-blue-500"
             />
-            {activeTab === 'categories' && (
-                <input 
-                    type="number" 
-                    value={newBudget} 
-                    onChange={(e) => setNewBudget(e.target.value)}
-                    placeholder="R$ META"
-                    className="w-24 p-2 border rounded-lg h-10"
-                    title="Orçamento mensal previsto"
-                />
-            )}
-            <button 
-                onClick={() => handleAdd(activeTab === 'categories' ? 'cat' : 'est')}
-                className="bg-green-500 text-white px-4 h-10 rounded-lg hover:bg-green-600 flex items-center justify-center"
-            >
-                <Plus />
-            </button>
+            <div className="flex gap-2">
+                {activeTab === 'categories' && (
+                    <input 
+                        type="number" 
+                        value={newBudget} 
+                        onChange={(e) => setNewBudget(e.target.value)}
+                        placeholder="R$ META"
+                        className="w-24 md:w-32 p-3 border rounded-lg h-12 outline-none focus:ring-2 focus:ring-blue-500"
+                        title="Orçamento mensal previsto"
+                    />
+                )}
+                <button 
+                    onClick={() => handleAdd(activeTab === 'categories' ? 'cat' : 'est')}
+                    className="bg-green-500 text-white px-6 h-12 rounded-lg hover:bg-green-600 flex items-center justify-center shadow-sm"
+                >
+                    <Plus size={24} />
+                </button>
+            </div>
           </div>
 
-          <ul className="space-y-2">
+          <ul className="space-y-3">
             {(activeTab === 'categories' ? categories : establishments).map((item) => (
-              <li key={item.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100">
+              <li key={item.id} className="flex items-center justify-between p-4 bg-white border border-gray-100 rounded-lg shadow-sm hover:shadow-md transition-shadow">
                 {editingId === item.id ? (
-                    <div className="flex gap-2 w-full items-center">
+                    <div className="flex flex-col md:flex-row gap-2 w-full">
                         <input 
                             type="text" 
                             value={editValue} 
                             onChange={(e) => setEditValue(e.target.value.toUpperCase())}
-                            className="flex-1 p-1 border rounded uppercase"
+                            className="flex-1 p-2 border rounded uppercase"
+                            autoFocus
                         />
-                        {activeTab === 'categories' && (
-                            <input 
-                                type="number" 
-                                value={editBudget} 
-                                onChange={(e) => setEditBudget(e.target.value)}
-                                placeholder="0.00"
-                                className="w-24 p-1 border rounded"
-                            />
-                        )}
-                        <button onClick={() => handleSaveEdit(activeTab === 'categories' ? 'cat' : 'est')} className="text-green-600"><Save size={20} /></button>
-                        <button onClick={() => finishEdit()} className="text-gray-500"><X size={20} /></button>
+                        <div className="flex gap-2 items-center justify-end">
+                             {activeTab === 'categories' && (
+                                <input 
+                                    type="number" 
+                                    value={editBudget} 
+                                    onChange={(e) => setEditBudget(e.target.value)}
+                                    placeholder="0.00"
+                                    className="w-24 p-2 border rounded"
+                                />
+                            )}
+                            <button onClick={() => handleSaveEdit(activeTab === 'categories' ? 'cat' : 'est')} className="text-white bg-green-500 p-2 rounded"><Save size={20} /></button>
+                            <button onClick={() => finishEdit()} className="text-gray-500 bg-gray-200 p-2 rounded"><X size={20} /></button>
+                        </div>
                     </div>
                 ) : (
                     <>
-                        <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-4">
-                            <span className="text-gray-800 font-medium uppercase">{item.name}</span>
+                        <div className="flex flex-col gap-1">
+                            <span className="text-gray-800 font-bold uppercase text-sm md:text-base">{item.name}</span>
                             {(item as CategoryData).budget && (item as CategoryData).budget! > 0 && activeTab === 'categories' && (
-                                <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">
+                                <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full w-fit font-medium">
                                     Meta: {formatCurrency((item as CategoryData).budget!)}
                                 </span>
                             )}
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex gap-4 pl-4">
                             <button 
                                 onClick={() => handleStartEdit(item.id, item.name, (item as CategoryData).budget)} 
-                                className="text-blue-500 hover:bg-blue-100 p-1 rounded"
+                                className="text-blue-500 hover:bg-blue-50 p-2 -m-2 rounded-full"
                             >
-                                <Edit2 size={18} />
+                                <Edit2 size={20} />
                             </button>
                             <button 
                                 onClick={() => activeTab === 'categories' ? onDeleteCategory(item.id) : onDeleteEstablishment(item.id)} 
-                                className="text-red-500 hover:bg-red-100 p-1 rounded"
+                                className="text-red-500 hover:bg-red-50 p-2 -m-2 rounded-full"
                             >
-                                <Trash2 size={18} />
+                                <Trash2 size={20} />
                             </button>
                         </div>
                     </>

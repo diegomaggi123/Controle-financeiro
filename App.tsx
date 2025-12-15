@@ -8,7 +8,7 @@ import SummaryCards from './components/SummaryCards';
 import AnnualComparison from './components/AnnualComparison';
 import BudgetProgress from './components/BudgetProgress';
 import Auth from './components/Auth';
-import { Plus, ChevronLeft, ChevronRight, Edit2, Trash2, Settings as SettingsIcon, Calendar, Repeat, Tag, BarChart3, List, LogOut, FileSpreadsheet, FileText } from 'lucide-react';
+import { Plus, ChevronLeft, ChevronRight, Edit2, Trash2, Settings as SettingsIcon, Calendar, Repeat, Tag, BarChart3, List, LogOut, FileSpreadsheet, FileText, MoreVertical } from 'lucide-react';
 import { format, subMonths, addMonths, parseISO, compareAsc, setMonth, setYear, subYears, addYears } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { supabase } from './supabaseClient';
@@ -373,44 +373,44 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen pb-20 bg-gray-50">
+    <div className="min-h-screen pb-32 md:pb-20 bg-gray-50">
       {/* Compact Header */}
       <header className="bg-blue-800 text-white sticky top-0 z-30 shadow-md transition-all">
-        <div className="max-w-5xl mx-auto px-4 py-2 flex flex-col md:flex-row items-center justify-between gap-2 md:gap-0">
+        <div className="max-w-5xl mx-auto px-4 py-3 flex flex-col md:flex-row items-center justify-between gap-3 md:gap-0">
           
           {/* Left: Title + Mobile Settings/Logout */}
           <div className="flex w-full md:w-auto items-center justify-between">
-              <h1 className="text-lg font-bold truncate">Controle Financeiro Diego</h1>
+              <h1 className="text-lg font-bold truncate">Financeiro Diego</h1>
               <div className="flex gap-2 md:hidden">
                   <button 
                       onClick={() => setIsSettingsOpen(true)}
-                      className="p-1 hover:bg-blue-700 rounded-full"
+                      className="p-2 hover:bg-blue-700 rounded-full"
                       title="Configurações"
                   >
-                      <SettingsIcon size={20} />
+                      <SettingsIcon size={22} />
                   </button>
                   <button 
                     onClick={handleLogout}
-                    className="p-1 hover:bg-blue-700 rounded-full"
+                    className="p-2 hover:bg-blue-700 rounded-full"
                     title="Sair"
                   >
-                    <LogOut size={20} />
+                    <LogOut size={22} />
                   </button>
               </div>
           </div>
           
           {/* Center: Navigation */}
-          <div className="flex items-center justify-center bg-blue-900/40 rounded-full px-2 py-1 relative">
+          <div className="flex items-center justify-center bg-blue-900/40 rounded-full px-4 py-1.5 relative w-full md:w-auto">
             <button 
                 onClick={() => setCurrentDate(viewMode === 'monthly' ? subMonths(currentDate, 1) : subYears(currentDate, 1))}
-                className="p-1 hover:bg-blue-700 rounded-full transition-colors"
+                className="p-2 hover:bg-blue-700 rounded-full transition-colors"
             >
-                <ChevronLeft size={20} />
+                <ChevronLeft size={24} />
             </button>
             
-            <div className="relative group mx-2 min-w-[150px] text-center flex items-center justify-center">
+            <div className="relative group mx-4 flex-1 md:min-w-[180px] text-center flex items-center justify-center h-10">
                 <span 
-                    className="font-semibold capitalize text-lg text-center block select-none px-2 py-1 uppercase"
+                    className="font-bold capitalize text-lg text-center block select-none uppercase truncate"
                 >
                     {viewMode === 'monthly' ? currentMonthName : `Ano ${currentYearVal}`}
                 </span>
@@ -448,17 +448,17 @@ const App: React.FC = () => {
 
             <button 
                 onClick={() => setCurrentDate(viewMode === 'monthly' ? addMonths(currentDate, 1) : addYears(currentDate, 1))}
-                className="p-1 hover:bg-blue-700 rounded-full transition-colors"
+                className="p-2 hover:bg-blue-700 rounded-full transition-colors"
             >
-                <ChevronRight size={20} />
+                <ChevronRight size={24} />
             </button>
           </div>
 
           {/* Right: View Toggle + Settings + Logout (Desktop) */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 hidden md:flex">
             <button
                 onClick={() => setViewMode(viewMode === 'monthly' ? 'annual' : 'monthly')}
-                className="flex items-center gap-2 bg-blue-700 px-3 py-1 rounded text-sm hover:bg-blue-600 transition-colors hidden md:flex uppercase"
+                className="flex items-center gap-2 bg-blue-700 px-3 py-1 rounded text-sm hover:bg-blue-600 transition-colors uppercase"
             >
                 {viewMode === 'monthly' ? (
                     <><BarChart3 size={16} /> Anual</>
@@ -468,24 +468,40 @@ const App: React.FC = () => {
             </button>
             <button 
                 onClick={() => setIsSettingsOpen(true)}
-                className="p-2 hover:bg-blue-700 rounded-full hidden md:block"
+                className="p-2 hover:bg-blue-700 rounded-full"
                 title="Configurações"
             >
                 <SettingsIcon size={20} />
             </button>
              <button 
                 onClick={handleLogout}
-                className="p-2 hover:bg-blue-700 rounded-full hidden md:block"
+                className="p-2 hover:bg-blue-700 rounded-full"
                 title="Sair"
             >
                 <LogOut size={20} />
             </button>
           </div>
         </div>
+        
+        {/* Mobile View Toggle (Below header) */}
+        <div className="md:hidden flex bg-blue-900 text-xs">
+             <button
+                onClick={() => setViewMode('monthly')}
+                className={`flex-1 py-2 text-center uppercase font-medium ${viewMode === 'monthly' ? 'bg-blue-700 text-white' : 'text-blue-200'}`}
+            >
+                Mensal
+            </button>
+            <button
+                onClick={() => setViewMode('annual')}
+                className={`flex-1 py-2 text-center uppercase font-medium ${viewMode === 'annual' ? 'bg-blue-700 text-white' : 'text-blue-200'}`}
+            >
+                Anual
+            </button>
+        </div>
       </header>
 
       {/* Main Content */}
-      <main className="max-w-5xl mx-auto px-4 py-6 space-y-8">
+      <main className="max-w-5xl mx-auto px-4 py-6 space-y-6">
         
         {viewMode === 'annual' ? (
              <AnnualComparison 
@@ -497,7 +513,6 @@ const App: React.FC = () => {
         ) : (
             <>
                 {/* Summary Cards */}
-                {/* Nota: Passamos effectiveCategories, que contem o budget mesclado (padrão x específico) */}
                 <SummaryCards transactions={filteredTransactions} categories={effectiveCategories} />
                 
                 {/* Budget Progress (Planning) */}
@@ -510,108 +525,160 @@ const App: React.FC = () => {
 
                 {/* Transaction List */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                <div className="p-4 border-b flex justify-between items-center bg-gray-50">
-                    <h2 className="text-lg font-bold text-gray-800 uppercase">Lançamentos</h2>
-                    <div className="flex gap-2 items-center">
-                        <button 
-                            onClick={handleExportExcel}
-                            className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-green-700 bg-green-50 hover:bg-green-100 rounded border border-green-200 transition-colors uppercase"
-                            title="Exportar para Excel"
-                        >
-                            <FileSpreadsheet size={16} /> Excel
-                        </button>
-                        <button 
-                            onClick={handleExportPDF}
-                            className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100 rounded border border-red-200 transition-colors uppercase"
-                            title="Exportar para PDF"
-                        >
-                            <FileText size={16} /> PDF
-                        </button>
-                        <span className="text-sm text-gray-500 ml-2 border-l pl-3">{filteredTransactions.length} registros</span>
+                    <div className="p-4 border-b flex justify-between items-center bg-gray-50">
+                        <h2 className="text-lg font-bold text-gray-800 uppercase">Lançamentos</h2>
+                        <div className="flex gap-2 items-center">
+                            <button 
+                                onClick={handleExportExcel}
+                                className="hidden md:flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-green-700 bg-green-50 hover:bg-green-100 rounded border border-green-200 transition-colors uppercase"
+                                title="Exportar para Excel"
+                            >
+                                <FileSpreadsheet size={16} /> Excel
+                            </button>
+                            <span className="text-sm text-gray-500 border-l pl-3">{filteredTransactions.length} registros</span>
+                        </div>
                     </div>
-                </div>
                 
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
-                    <thead>
-                        <tr className="bg-gray-50 text-gray-500 text-sm border-b uppercase">
-                        <th className="p-4 font-medium">Data Compra</th>
-                        <th className="p-4 font-medium">Descrição</th>
-                        <th className="p-4 font-medium">Categoria</th>
-                        <th className="p-4 font-medium">Tipo</th>
-                        <th className="p-4 font-medium text-right">Valor</th>
-                        <th className="p-4 font-medium text-center">Ações</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                        {filteredTransactions.length === 0 ? (
-                        <tr>
-                            <td colSpan={6} className="p-8 text-center text-gray-400">
-                            Nenhum lançamento neste mês.
-                            </td>
-                        </tr>
-                        ) : (
-                        filteredTransactions.map(t => (
-                            <tr key={t.id} className="hover:bg-gray-50 transition-colors group">
-                            <td className="p-4 text-sm text-gray-600">
-                                <div className="flex items-center gap-2">
-                                <Calendar size={14} className="text-gray-400" />
-                                {formatDate(t.date)}
-                                </div>
-                            </td>
-                            <td className="p-4 font-medium text-gray-800 uppercase">
-                                {t.description}
-                            </td>
-                            <td className="p-4 text-sm">
-                                <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium uppercase ${getCategoryColor(t.category)}`}>
-                                <Tag size={12} /> {t.category}
-                                </span>
-                            </td>
-                            <td className="p-4 text-sm text-gray-500 uppercase">
-                                {(t.recurrenceType === 'installment' || t.recurrenceType === 'repeat') && (
-                                <span className="flex items-center gap-1">
-                                    <Repeat size={14} />
-                                    {t.installmentCurrent}/{t.installmentTotal}
-                                </span>
-                                )}
-                                {t.recurrenceType === 'fixed' && (
-                                    <span className="text-gray-500">
-                                        Fixo
-                                    </span>
-                                )}
-                                {t.recurrenceType === 'single' && (
-                                    <span className="text-gray-500">À vista</span>
-                                )}
-                            </td>
-                            <td className={`p-4 font-bold text-right ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
-                                {t.type === 'expense' ? '- ' : '+ '}
-                                {formatCurrency(t.amount)}
-                            </td>
-                            <td className="p-4 text-center">
-                                <div className="flex justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button 
-                                    onClick={() => {
-                                        setEditingTransaction(t);
-                                        setIsFormOpen(true);
-                                    }}
-                                    className="p-1 text-blue-600 hover:bg-blue-100 rounded"
-                                >
-                                    <Edit2 size={16} />
-                                </button>
-                                <button 
-                                    onClick={() => handleDeleteClick(t)}
-                                    className="p-1 text-red-600 hover:bg-red-100 rounded"
-                                >
-                                    <Trash2 size={16} />
-                                </button>
-                                </div>
-                            </td>
+                    {/* DESKTOP TABLE VIEW */}
+                    <div className="hidden md:block overflow-x-auto">
+                        <table className="w-full text-left border-collapse">
+                        <thead>
+                            <tr className="bg-gray-50 text-gray-500 text-sm border-b uppercase">
+                            <th className="p-4 font-medium">Data</th>
+                            <th className="p-4 font-medium">Descrição</th>
+                            <th className="p-4 font-medium">Categoria</th>
+                            <th className="p-4 font-medium">Tipo</th>
+                            <th className="p-4 font-medium text-right">Valor</th>
+                            <th className="p-4 font-medium text-center">Ações</th>
                             </tr>
-                        ))
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                            {filteredTransactions.length === 0 ? (
+                            <tr>
+                                <td colSpan={6} className="p-8 text-center text-gray-400">
+                                Nenhum lançamento neste mês.
+                                </td>
+                            </tr>
+                            ) : (
+                            filteredTransactions.map(t => (
+                                <tr key={t.id} className="hover:bg-gray-50 transition-colors group">
+                                <td className="p-4 text-sm text-gray-600">
+                                    <div className="flex items-center gap-2">
+                                    <Calendar size={14} className="text-gray-400" />
+                                    {formatDate(t.date)}
+                                    </div>
+                                </td>
+                                <td className="p-4 font-medium text-gray-800 uppercase">
+                                    {t.description}
+                                </td>
+                                <td className="p-4 text-sm">
+                                    <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium uppercase ${getCategoryColor(t.category)}`}>
+                                    <Tag size={12} /> {t.category}
+                                    </span>
+                                </td>
+                                <td className="p-4 text-sm text-gray-500 uppercase">
+                                    {(t.recurrenceType === 'installment' || t.recurrenceType === 'repeat') && (
+                                    <span className="flex items-center gap-1">
+                                        <Repeat size={14} />
+                                        {t.installmentCurrent}/{t.installmentTotal}
+                                    </span>
+                                    )}
+                                    {t.recurrenceType === 'fixed' && (
+                                        <span className="text-gray-500">
+                                            Fixo
+                                        </span>
+                                    )}
+                                    {t.recurrenceType === 'single' && (
+                                        <span className="text-gray-500">À vista</span>
+                                    )}
+                                </td>
+                                <td className={`p-4 font-bold text-right ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
+                                    {t.type === 'expense' ? '- ' : '+ '}
+                                    {formatCurrency(t.amount)}
+                                </td>
+                                <td className="p-4 text-center">
+                                    <div className="flex justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button 
+                                        onClick={() => {
+                                            setEditingTransaction(t);
+                                            setIsFormOpen(true);
+                                        }}
+                                        className="p-1 text-blue-600 hover:bg-blue-100 rounded"
+                                    >
+                                        <Edit2 size={16} />
+                                    </button>
+                                    <button 
+                                        onClick={() => handleDeleteClick(t)}
+                                        className="p-1 text-red-600 hover:bg-red-100 rounded"
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
+                                    </div>
+                                </td>
+                                </tr>
+                            ))
+                            )}
+                        </tbody>
+                        </table>
+                    </div>
+
+                    {/* MOBILE CARD VIEW */}
+                    <div className="md:hidden">
+                        {filteredTransactions.length === 0 ? (
+                             <div className="p-8 text-center text-gray-400 text-sm">Nenhum lançamento.</div>
+                        ) : (
+                            <ul className="divide-y divide-gray-100">
+                                {filteredTransactions.map(t => (
+                                    <li key={t.id} className="p-4 flex flex-col gap-2 hover:bg-gray-50 active:bg-gray-50" 
+                                        onClick={() => {
+                                            // Optional: Make whole card clickable or just buttons
+                                        }}
+                                    >
+                                        <div className="flex justify-between items-start">
+                                            <div className="flex-1">
+                                                <h3 className="font-bold text-gray-800 uppercase text-sm mb-1">{t.description}</h3>
+                                                <div className="flex flex-wrap gap-2 items-center mb-1">
+                                                     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase ${getCategoryColor(t.category)}`}>
+                                                        {t.category}
+                                                    </span>
+                                                    <span className="text-xs text-gray-500 flex items-center gap-1">
+                                                        <Calendar size={12} /> {formatDate(t.date)}
+                                                    </span>
+                                                </div>
+                                                <div className="text-xs text-gray-400 uppercase">
+                                                    {(t.recurrenceType === 'installment' || t.recurrenceType === 'repeat') && (
+                                                        <span>Parc. {t.installmentCurrent}/{t.installmentTotal}</span>
+                                                    )}
+                                                    {t.recurrenceType === 'fixed' && <span>Fixo Mensal</span>}
+                                                </div>
+                                            </div>
+                                            <div className="text-right">
+                                                <span className={`block font-bold text-lg ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
+                                                    {t.type === 'expense' ? '-' : '+'}{formatCurrency(t.amount)}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        
+                                        {/* Actions Row */}
+                                        <div className="flex justify-end gap-4 mt-1 border-t border-gray-50 pt-2">
+                                            <button 
+                                                onClick={(e) => { e.stopPropagation(); setEditingTransaction(t); setIsFormOpen(true); }}
+                                                className="text-blue-600 text-xs font-medium uppercase flex items-center gap-1 p-2 -my-2"
+                                            >
+                                                <Edit2 size={14} /> Editar
+                                            </button>
+                                            <button 
+                                                onClick={(e) => { e.stopPropagation(); handleDeleteClick(t); }}
+                                                className="text-red-600 text-xs font-medium uppercase flex items-center gap-1 p-2 -my-2"
+                                            >
+                                                <Trash2 size={14} /> Excluir
+                                            </button>
+                                        </div>
+                                    </li>
+                                ))}
+                            </ul>
                         )}
-                    </tbody>
-                    </table>
-                </div>
+                    </div>
                 </div>
 
                 <Dashboard transactions={filteredTransactions} currentMonthName={currentMonthName} />
@@ -620,17 +687,18 @@ const App: React.FC = () => {
 
       </main>
 
-      {/* Floating Action Button */}
+      {/* Floating Action Button - Mobile Optimized */}
       {viewMode === 'monthly' && (
         <button
             onClick={() => {
                 setEditingTransaction(null);
                 setIsFormOpen(true);
             }}
-            className="fixed bottom-6 right-6 bg-blue-800 text-white px-6 py-4 rounded-full shadow-lg hover:bg-blue-900 hover:scale-105 transition-all z-40 flex items-center gap-2 font-bold text-lg uppercase"
+            className="fixed bottom-6 right-6 md:right-8 bg-blue-800 text-white w-14 h-14 md:w-auto md:h-auto md:px-6 md:py-4 rounded-full shadow-xl shadow-blue-900/30 hover:bg-blue-900 hover:scale-105 transition-all z-40 flex items-center justify-center gap-2 font-bold text-lg uppercase"
+            aria-label="Novo Lançamento"
         >
-            <Plus size={24} />
-            Novo Lançamento
+            <Plus size={28} />
+            <span className="hidden md:inline">Novo Lançamento</span>
         </button>
       )}
 
@@ -663,26 +731,26 @@ const App: React.FC = () => {
 
       {/* Delete Confirmation Modal */}
       {deleteConfirmation && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg p-6 w-full max-w-sm shadow-xl">
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-end md:items-center justify-center z-50 p-0 md:p-4">
+            <div className="bg-white rounded-t-2xl md:rounded-lg p-6 w-full max-w-sm shadow-xl animate-in slide-in-from-bottom duration-300 md:animate-none">
                 <h3 className="text-lg font-bold mb-4 text-gray-800 uppercase">Confirmar Exclusão</h3>
-                <p className="mb-6 text-gray-600 uppercase">Este é um item recorrente/parcelado. O que deseja excluir?</p>
+                <p className="mb-6 text-gray-600 uppercase text-sm">Este é um item recorrente/parcelado. O que deseja excluir?</p>
                 <div className="flex flex-col gap-3">
                     <button 
                         onClick={() => confirmDelete('single')}
-                        className="p-3 bg-gray-100 hover:bg-gray-200 rounded text-left font-medium uppercase"
+                        className="p-4 bg-gray-100 hover:bg-gray-200 rounded-lg text-left font-bold text-gray-700 uppercase"
                     >
                         Apenas este lançamento
                     </button>
                     <button 
                         onClick={() => confirmDelete('future')}
-                        className="p-3 bg-red-600 hover:bg-red-700 text-white rounded text-left font-medium uppercase"
+                        className="p-4 bg-red-600 hover:bg-red-700 text-white rounded-lg text-left font-bold uppercase shadow-sm"
                     >
                         Este e os futuros
                     </button>
                     <button 
                         onClick={() => setDeleteConfirmation(null)}
-                        className="mt-2 text-sm text-gray-500 hover:underline text-center uppercase"
+                        className="mt-2 py-3 text-sm text-gray-500 hover:text-gray-800 text-center uppercase font-medium"
                     >
                         Cancelar
                     </button>
