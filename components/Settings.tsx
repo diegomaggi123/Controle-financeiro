@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { CategoryData, EstablishmentData } from '../types';
-import { Trash2, Edit2, Plus, X, Save, ArrowLeft } from 'lucide-react';
+import { Trash2, Edit2, Plus, X, Save, ArrowLeft, AlertTriangle } from 'lucide-react';
 import { formatCurrency } from '../utils';
 
 interface SettingsProps {
@@ -37,9 +37,12 @@ const Settings: React.FC<SettingsProps> = ({
   const [newValue, setNewValue] = useState('');
   const [newBudget, setNewBudget] = useState(''); 
   
-  // State for Scope Modal
+  // State for Scope Modal (Update Budget)
   const [showScopeModal, setShowScopeModal] = useState(false);
   const [pendingUpdate, setPendingUpdate] = useState<{id: string, name: string, budget: number} | null>(null);
+
+  // State for Delete Confirmation
+  const [itemToDelete, setItemToDelete] = useState<{id: string, name: string, type: 'cat' | 'est'} | null>(null);
 
   const handleStartEdit = (id: string, currentName: string, currentBudget?: number) => {
     setEditingId(id);
@@ -56,14 +59,12 @@ const Settings: React.FC<SettingsProps> = ({
         const budgetVal = editBudget ? parseFloat(editBudget.replace(',', '.')) : 0;
         
         // Se o orçamento mudou, pergunta o escopo
-        // Nota: Comparação solta (loose) pois budgetVal pode ser NaN ou 0 e originalBudget undefined
         const budgetChanged = (budgetVal !== (originalBudget || 0));
 
         if (budgetChanged) {
             setPendingUpdate({ id: editingId, name: upperValue, budget: budgetVal });
             setShowScopeModal(true);
         } else {
-            // Se só mudou o nome, salva direto (scope default é future/all para nome, mas a função lida)
             onUpdateCategory(editingId, upperValue, budgetVal, 'future');
             finishEdit();
         }
@@ -104,10 +105,21 @@ const Settings: React.FC<SettingsProps> = ({
     setNewBudget('');
   };
 
+  const confirmDelete = () => {
+      if (!itemToDelete) return;
+
+      if (itemToDelete.type === 'cat') {
+          onDeleteCategory(itemToDelete.id);
+      } else {
+          onDeleteEstablishment(itemToDelete.id);
+      }
+      setItemToDelete(null);
+  }
+
   return (
     <div className="fixed inset-0 bg-white md:bg-black md:bg-opacity-50 flex items-center justify-center z-50 md:p-4">
       
-      {/* Scope Confirmation Modal */}
+      {/* Scope Confirmation Modal (Updates) */}
       {showScopeModal && (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[60] p-4">
             <div className="bg-white rounded-lg p-6 w-full max-w-sm shadow-xl animate-in fade-in zoom-in duration-200">
@@ -130,6 +142,36 @@ const Settings: React.FC<SettingsProps> = ({
                     </button>
                     <button 
                         onClick={() => { setShowScopeModal(false); setPendingUpdate(null); }}
+                        className="mt-2 text-sm text-gray-500 hover:underline text-center uppercase"
+                    >
+                        Cancelar
+                    </button>
+                </div>
+            </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal (Inside Settings) */}
+      {itemToDelete && (
+         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[60] p-4">
+            <div className="bg-white rounded-lg p-6 w-full max-w-sm shadow-xl animate-in fade-in zoom-in duration-200">
+                <div className="flex items-center gap-3 mb-4 text-red-600">
+                    <AlertTriangle size={24} />
+                    <h3 className="text-lg font-bold uppercase">Excluir Item</h3>
+                </div>
+                <p className="mb-2 text-gray-800 font-bold uppercase">{itemToDelete.name}</p>
+                <p className="mb-6 text-gray-600 text-sm">
+                    Tem certeza que deseja excluir? Isso pode afetar lançamentos históricos se não houver cuidado.
+                </p>
+                <div className="flex flex-col gap-3">
+                    <button 
+                        onClick={confirmDelete}
+                        className="p-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold uppercase shadow-sm flex items-center justify-center gap-2"
+                    >
+                       <Trash2 size={18} /> Sim, Excluir
+                    </button>
+                    <button 
+                        onClick={() => setItemToDelete(null)}
                         className="mt-2 text-sm text-gray-500 hover:underline text-center uppercase"
                     >
                         Cancelar
@@ -242,7 +284,11 @@ const Settings: React.FC<SettingsProps> = ({
                                 <Edit2 size={20} />
                             </button>
                             <button 
-                                onClick={() => activeTab === 'categories' ? onDeleteCategory(item.id) : onDeleteEstablishment(item.id)} 
+                                onClick={() => setItemToDelete({ 
+                                    id: item.id, 
+                                    name: item.name, 
+                                    type: activeTab === 'categories' ? 'cat' : 'est'
+                                })} 
                                 className="text-red-500 hover:bg-red-50 p-2 -m-2 rounded-full"
                             >
                                 <Trash2 size={20} />

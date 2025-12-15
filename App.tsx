@@ -8,7 +8,7 @@ import SummaryCards from './components/SummaryCards';
 import AnnualComparison from './components/AnnualComparison';
 import BudgetProgress from './components/BudgetProgress';
 import Auth from './components/Auth';
-import { Plus, ChevronLeft, ChevronRight, Edit2, Trash2, Settings as SettingsIcon, Calendar, Repeat, Tag, BarChart3, List, LogOut, FileSpreadsheet, FileText, MoreVertical } from 'lucide-react';
+import { Plus, ChevronLeft, ChevronRight, Edit2, Trash2, Settings as SettingsIcon, Calendar, Repeat, Tag, BarChart3, List, LogOut, FileSpreadsheet, FileText, MoreVertical, AlertTriangle } from 'lucide-react';
 import { format, subMonths, addMonths, parseISO, compareAsc, setMonth, setYear, subYears, addYears } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { supabase } from './supabaseClient';
@@ -32,7 +32,7 @@ const App: React.FC = () => {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
-  const [deleteConfirmation, setDeleteConfirmation] = useState<{ id: string, recurrenceType: string, groupId: string } | null>(null);
+  const [deleteConfirmation, setDeleteConfirmation] = useState<{ id: string, recurrenceType: string, groupId: string, description: string } | null>(null);
   
   // --- Auth & Data Fetching ---
 
@@ -190,11 +190,13 @@ const App: React.FC = () => {
   };
 
   const handleDeleteClick = (transaction: Transaction) => {
-    if (transaction.recurrenceType === 'single') {
-        supabase.from('transactions').delete().eq('id', transaction.id).then(() => fetchData());
-    } else {
-        setDeleteConfirmation({ id: transaction.id, recurrenceType: transaction.recurrenceType, groupId: transaction.groupId });
-    }
+    // SEMPRE pede confirmação, independentemente do tipo
+    setDeleteConfirmation({ 
+        id: transaction.id, 
+        recurrenceType: transaction.recurrenceType, 
+        groupId: transaction.groupId,
+        description: transaction.description
+    });
   };
 
   const confirmDelete = async (scope: 'single' | 'future') => {
@@ -231,23 +233,16 @@ const App: React.FC = () => {
 
       if (scope === 'future') {
         // LOGICA DE "NOVO PADRÃO" (DAQUI PRA FRENTE)
-        // Precisamos garantir que o passado NÃO mude.
-        // Se mudarmos o categories.budget direto, todos os meses passados que não tem monthly_budget mudarão.
-        // Solução: Preencher os monthly_budgets dos meses anteriores com o valor VELHO antes de atualizar o novo.
-        
         const category = categories.find(c => c.id === id);
         const oldBudget = category?.budget || 0;
 
         if (oldBudget !== budget) {
-            // Congelar histórico: Vamos olhar para os ultimos 24 meses para garantir
-            // que o histórico recente fique intacto.
+            // Congelar histórico: Vamos olhar para os ultimos 24 meses
             const monthsToFreeze = [];
-            let iterDate = subMonths(currentDate, 1); // Começa do mês passado para trás
+            let iterDate = subMonths(currentDate, 1); 
             
             for (let i = 0; i < 24; i++) {
                 const mKey = getMonthYearKey(iterDate);
-                
-                // Verifica se já existe um orçamento específico (se já existe, não mexe)
                 const hasSpecific = monthlyBudgets.some(mb => mb.category_id === id && mb.month_year === mKey);
                 
                 if (!hasSpecific) {
@@ -266,10 +261,10 @@ const App: React.FC = () => {
             }
         }
 
-        // Atualiza o padrão global (que afetará o futuro e buracos no passado além dos 24 meses)
+        // Atualiza o padrão global
         await supabase.from('categories').update({ budget }).eq('id', id);
         
-        // Remove qualquer override do mês atual para garantir que ele assuma o novo padrão global
+        // Remove qualquer override do mês atual
         await supabase.from('monthly_budgets').delete()
             .eq('category_id', id)
             .eq('month_year', currentMonthKey);
@@ -283,7 +278,6 @@ const App: React.FC = () => {
             user_id: session.user.id
         };
         
-        // Usando onConflict para fazer upsert
         await supabase.from('monthly_budgets').upsert(payload, { onConflict: 'category_id, month_year' });
       }
 
@@ -329,7 +323,6 @@ const App: React.FC = () => {
     } catch (error) {
         console.error("Erro ao fazer logout:", error);
     } finally {
-        // Force local state update to ensure UI reflects logout immediately
         setSession(null);
         setTransactions([]);
         setCategories([]);
@@ -733,21 +726,48 @@ const App: React.FC = () => {
       {deleteConfirmation && (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-end md:items-center justify-center z-50 p-0 md:p-4">
             <div className="bg-white rounded-t-2xl md:rounded-lg p-6 w-full max-w-sm shadow-xl animate-in slide-in-from-bottom duration-300 md:animate-none">
-                <h3 className="text-lg font-bold mb-4 text-gray-800 uppercase">Confirmar Exclusão</h3>
-                <p className="mb-6 text-gray-600 uppercase text-sm">Este é um item recorrente/parcelado. O que deseja excluir?</p>
+                <div className="flex items-center gap-3 mb-4 text-red-600">
+                    <AlertTriangle size={24} />
+                    <h3 className="text-lg font-bold uppercase">Confirmar Exclusão</h3>
+                </div>
+                
+                <p className="mb-2 text-gray-800 font-bold uppercase">{deleteConfirmation.description}</p>
+                
+                {deleteConfirmation.recurrenceType === 'single' ? (
+                     <p className="mb-6 text-gray-600 text-sm uppercase">
+                        Tem certeza que deseja excluir este lançamento? Esta ação não pode ser desfeita.
+                     </p>
+                ) : (
+                    <p className="mb-6 text-gray-600 text-sm uppercase">
+                        Este é um item recorrente/parcelado. O que deseja excluir?
+                    </p>
+                )}
+
                 <div className="flex flex-col gap-3">
-                    <button 
-                        onClick={() => confirmDelete('single')}
-                        className="p-4 bg-gray-100 hover:bg-gray-200 rounded-lg text-left font-bold text-gray-700 uppercase"
-                    >
-                        Apenas este lançamento
-                    </button>
-                    <button 
-                        onClick={() => confirmDelete('future')}
-                        className="p-4 bg-red-600 hover:bg-red-700 text-white rounded-lg text-left font-bold uppercase shadow-sm"
-                    >
-                        Este e os futuros
-                    </button>
+                    {deleteConfirmation.recurrenceType === 'single' ? (
+                        <button 
+                            onClick={() => confirmDelete('single')}
+                            className="p-4 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold uppercase shadow-sm flex items-center justify-center gap-2"
+                        >
+                            <Trash2 size={18} /> Sim, Excluir
+                        </button>
+                    ) : (
+                        <>
+                             <button 
+                                onClick={() => confirmDelete('single')}
+                                className="p-4 bg-gray-100 hover:bg-gray-200 rounded-lg text-left font-bold text-gray-700 uppercase"
+                            >
+                                Apenas este lançamento
+                            </button>
+                            <button 
+                                onClick={() => confirmDelete('future')}
+                                className="p-4 bg-red-600 hover:bg-red-700 text-white rounded-lg text-left font-bold uppercase shadow-sm"
+                            >
+                                Este e os futuros
+                            </button>
+                        </>
+                    )}
+                   
                     <button 
                         onClick={() => setDeleteConfirmation(null)}
                         className="mt-2 py-3 text-sm text-gray-500 hover:text-gray-800 text-center uppercase font-medium"
