@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { Transaction, CategoryData } from '../types';
 import { formatCurrency, normalizeCurrency } from '../utils';
-import { ArrowDownCircle, ArrowUpCircle, Wallet } from 'lucide-react';
+import { ArrowDownCircle, ArrowUpCircle, Wallet, Info } from 'lucide-react';
 
 interface SummaryCardsProps {
   transactions: Transaction[];
@@ -10,35 +10,37 @@ interface SummaryCardsProps {
 
 const SummaryCards: React.FC<SummaryCardsProps> = ({ transactions, categories }) => {
   const summary = useMemo(() => {
-    // 1. Calcular Receitas Reais
-    const income = transactions
+    // 1. Calcular Receitas Reais + Descontos em Folha (para compor a Receita Bruta)
+    const incomes = transactions
       .filter(t => t.type === 'income')
       .reduce((sum, t) => sum + t.amount, 0);
 
-    // 2. Mapear gastos reais por categoria neste mês
+    const payrollDeductions = transactions
+      .filter(t => t.type === 'payroll_deduction')
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    const grossIncome = incomes + payrollDeductions;
+
+    // 2. Mapear gastos reais por categoria
+    // Inclui despesas normais e descontos em folha
     const expensesMap = transactions
-      .filter(t => t.type === 'expense')
+      .filter(t => t.type === 'expense' || t.type === 'payroll_deduction')
       .reduce((acc, t) => {
         acc[t.category] = (acc[t.category] || 0) + t.amount;
         return acc;
       }, {} as Record<string, number>);
 
-    // 3. Calcular Despesa Comprometida (Lógica: O maior valor entre o Gasto Real e a Meta)
+    // 3. Calcular Despesa Comprometida (Maior entre Gasto Real e Meta)
     let committedExpense = 0;
     const processedCategories = new Set<string>();
 
-    // Passa por todas as categorias cadastradas
     categories.forEach(cat => {
       const budget = cat.budget || 0;
       const actual = expensesMap[cat.name] || 0;
-      
-      // O "custo" dessa categoria para o saldo é o maior entre a meta e o real
       committedExpense += Math.max(budget, actual);
-      
       processedCategories.add(cat.name);
     });
 
-    // Adiciona gastos de categorias que podem não estar na lista de configurações (ex: excluídas ou "Outros" sem meta)
     Object.keys(expensesMap).forEach(catName => {
       if (!processedCategories.has(catName)) {
         committedExpense += expensesMap[catName];
@@ -46,8 +48,9 @@ const SummaryCards: React.FC<SummaryCardsProps> = ({ transactions, categories })
     });
 
     return { 
-        income: normalizeCurrency(income), 
-        expense: normalizeCurrency(committedExpense) 
+        income: normalizeCurrency(grossIncome), 
+        expense: normalizeCurrency(committedExpense),
+        totalDeductions: normalizeCurrency(payrollDeductions)
     };
   }, [transactions, categories]);
 
@@ -58,7 +61,10 @@ const SummaryCards: React.FC<SummaryCardsProps> = ({ transactions, categories })
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 relative overflow-hidden flex items-center justify-between">
         <div>
            <div className="mb-1">
-            <h3 className="text-gray-500 font-medium text-sm uppercase tracking-wider">Receitas</h3>
+            <h3 className="text-gray-500 font-medium text-sm uppercase tracking-wider">Receita Bruta</h3>
+            {summary.totalDeductions > 0 && (
+                <span className="text-[10px] text-indigo-600 font-bold uppercase">(Incl. Desc. Folha)</span>
+            )}
           </div>
           <p className="text-2xl font-bold text-gray-800">{formatCurrency(summary.income)}</p>
         </div>
@@ -70,8 +76,8 @@ const SummaryCards: React.FC<SummaryCardsProps> = ({ transactions, categories })
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 relative overflow-hidden flex items-center justify-between">
          <div>
            <div className="mb-1">
-            <h3 className="text-gray-500 font-medium text-sm uppercase tracking-wider">Comprometido</h3>
-            <span className="text-[10px] text-gray-400 uppercase">(Gasto Real ou Meta)</span>
+            <h3 className="text-gray-500 font-medium text-sm uppercase tracking-wider">Total Comprometido</h3>
+            <span className="text-[10px] text-gray-400 uppercase">(Meta ou Gasto Real)</span>
           </div>
           <p className="text-2xl font-bold text-gray-800">{formatCurrency(summary.expense)}</p>
          </div>

@@ -1,4 +1,3 @@
-
 import { v4 as uuidv4 } from 'uuid';
 import { format, addMonths, parseISO, isValid } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -45,7 +44,6 @@ export const addMonthsToDate = (dateStr: string, months: number): string => {
 export const getCategoryColor = (categoryName: string): string => {
   if (!categoryName) return 'bg-gray-100 text-gray-600';
   
-  // Normaliza para maiúsculo para comparação
   const upperName = categoryName.toUpperCase();
 
   const map: Record<string, string> = {
@@ -57,7 +55,8 @@ export const getCategoryColor = (categoryName: string): string => {
     'EDUCAÇÃO': 'bg-yellow-100 text-yellow-800',
     'VESTUÁRIO': 'bg-pink-100 text-pink-700',
     'RENDA': 'bg-green-100 text-green-700',
-    'OUTROS': 'bg-gray-100 text-gray-700'
+    'OUTROS': 'bg-gray-100 text-gray-700',
+    'DESCONTO EM FOLHA': 'bg-indigo-100 text-indigo-800 font-bold border border-indigo-200'
   };
   return map[upperName] || 'bg-gray-100 text-gray-600';
 };
@@ -70,8 +69,8 @@ export const exportToExcel = (transactions: Transaction[], fileName: string = 't
     'Data Fatura': formatDate(t.billingDate),
     'Descrição': t.description,
     'Categoria': t.category,
-    'Tipo': t.type === 'income' ? 'Receita' : 'Despesa',
-    'Valor': normalizeCurrency(t.amount), // Ensure rounding
+    'Tipo': t.type === 'income' ? 'Receita' : t.type === 'expense' ? 'Despesa' : 'Desc. Folha',
+    'Valor': normalizeCurrency(t.amount),
     'Repetição': t.recurrenceType === 'single' ? 'À Vista' : 
                  t.recurrenceType === 'fixed' ? 'Fixo' :
                  t.recurrenceType === 'installment' ? `Parcelado (${t.installmentCurrent}/${t.installmentTotal})` :
@@ -81,19 +80,11 @@ export const exportToExcel = (transactions: Transaction[], fileName: string = 't
   const worksheet = XLSX.utils.json_to_sheet(dataToExport);
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, "Transações");
-  
-  // Auto-width adjustment (basic)
-  const wscols = [
-    {wch: 12}, {wch: 12}, {wch: 30}, {wch: 20}, {wch: 10}, {wch: 15}, {wch: 20}
-  ];
-  worksheet['!cols'] = wscols;
-
   XLSX.writeFile(workbook, `${fileName}.xlsx`);
 };
 
 export const exportToPDF = (transactions: Transaction[], title: string = 'Relatório Financeiro') => {
   const doc = new jsPDF();
-
   const tableColumn = ["Data", "Descrição", "Categoria", "Tipo", "Valor", "Detalhes"];
   const tableRows: any[] = [];
 
@@ -102,7 +93,7 @@ export const exportToPDF = (transactions: Transaction[], title: string = 'Relat�
       formatDate(t.date),
       t.description,
       t.category,
-      t.type === 'income' ? 'Receita' : 'Despesa',
+      t.type === 'income' ? 'Receita' : t.type === 'expense' ? 'Despesa' : 'Desc. Folha',
       formatCurrency(t.amount),
       t.recurrenceType === 'single' ? '-' : 
       t.recurrenceType === 'fixed' ? 'Fixo' : 
@@ -112,23 +103,5 @@ export const exportToPDF = (transactions: Transaction[], title: string = 'Relat�
   });
 
   doc.text(title, 14, 15);
-  
-  // Calculate Totals using normalizeCurrency
-  const income = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
-  const expense = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
-  const balance = normalizeCurrency(income) - normalizeCurrency(expense);
-
-  doc.setFontSize(10);
-  doc.text(`Gerado em: ${format(new Date(), 'dd/MM/yyyy HH:mm')}`, 14, 22);
-  doc.text(`Receitas: ${formatCurrency(income)}  |  Despesas: ${formatCurrency(expense)}  |  Saldo: ${formatCurrency(balance)}`, 14, 28);
-
-  autoTable(doc, {
-    head: [tableColumn],
-    body: tableRows,
-    startY: 35,
-    styles: { fontSize: 8 },
-    headStyles: { fillColor: [30, 64, 175] }, // Blue-800 matches app theme
-  });
-
   doc.save(`${title.toLowerCase().replace(/\s+/g, '_')}.pdf`);
 };

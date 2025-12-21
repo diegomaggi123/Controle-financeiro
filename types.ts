@@ -1,4 +1,4 @@
-export type TransactionType = 'income' | 'expense';
+export type TransactionType = 'income' | 'expense' | 'payroll_deduction';
 
 export type RecurrenceType = 'single' | 'installment' | 'fixed' | 'repeat';
 
