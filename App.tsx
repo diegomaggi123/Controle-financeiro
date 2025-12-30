@@ -8,7 +8,7 @@ import SummaryCards from './components/SummaryCards';
 import AnnualComparison from './components/AnnualComparison';
 import BudgetProgress from './components/BudgetProgress';
 import Auth from './components/Auth';
-import { Plus, ChevronLeft, ChevronRight, Edit2, Trash2, Settings as SettingsIcon, Calendar, Repeat, Tag, BarChart3, List, LogOut, FileSpreadsheet, FileText, MoreVertical, AlertTriangle, Info } from 'lucide-react';
+import { Plus, ChevronLeft, ChevronRight, Edit2, Trash2, Settings as SettingsIcon, Calendar, Repeat, Tag, BarChart3, List, LogOut, FileSpreadsheet, FileText, MoreVertical, AlertTriangle, Info, Search, X } from 'lucide-react';
 import { format, subMonths, addMonths, parseISO, compareAsc, setMonth, setYear, subYears, addYears } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { supabase } from './supabaseClient';
@@ -29,6 +29,7 @@ const App: React.FC = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState<{ id: string, recurrenceType: string, type: string, groupId: string, description: string } | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -70,11 +71,21 @@ const App: React.FC = () => {
   useEffect(() => { if (session) fetchData(); }, [session]);
 
   const currentMonthKey = getMonthYearKey(currentDate);
+  
   const filteredTransactions = useMemo(() => {
-    return transactions
-      .filter(t => t.billingDate.startsWith(currentMonthKey))
-      .sort((a, b) => compareAsc(parseISO(a.date), parseISO(b.date)));
-  }, [transactions, currentDate, currentMonthKey]);
+    let result = transactions.filter(t => t.billingDate.startsWith(currentMonthKey));
+
+    if (searchTerm.trim()) {
+        const term = searchTerm.toLowerCase();
+        result = result.filter(t => 
+            t.description.toLowerCase().includes(term) || 
+            t.amount.toString().includes(term) ||
+            t.category.toLowerCase().includes(term)
+        );
+    }
+
+    return result.sort((a, b) => compareAsc(parseISO(a.date), parseISO(b.date)));
+  }, [transactions, currentDate, currentMonthKey, searchTerm]);
 
   const effectiveCategories = useMemo(() => {
     return categories.map(cat => {
@@ -91,7 +102,6 @@ const App: React.FC = () => {
     const toDbFormat = (t: Transaction) => ({
         id: t.id, user_id: session.user.id, group_id: t.groupId, description: t.description, amount: t.amount,
         type: t.type, category: t.category, date: t.date, billing_date: t.billingDate, 
-        // Corrected property access (Transaction uses camelCase)
         recurrence_type: t.recurrenceType,
         installment_current: t.installmentCurrent, 
         installment_total: t.installmentTotal
@@ -166,14 +176,14 @@ const App: React.FC = () => {
               </div>
           </div>
           <div className="flex items-center justify-center bg-blue-900/40 rounded-full px-4 py-1.5 w-full md:w-auto">
-            <button onClick={() => setCurrentDate(viewMode === 'monthly' ? subMonths(currentDate, 1) : subYears(currentDate, 1))} className="p-2 hover:bg-blue-700 rounded-full"><ChevronLeft size={24} /></button>
+            <button onClick={() => { setCurrentDate(viewMode === 'monthly' ? subMonths(currentDate, 1) : subYears(currentDate, 1)); setSearchTerm(''); }} className="p-2 hover:bg-blue-700 rounded-full"><ChevronLeft size={24} /></button>
             <div className="relative group mx-4 flex-1 md:min-w-[180px] text-center flex items-center justify-center h-10">
                 <span className="font-bold uppercase text-lg truncate">{viewMode === 'monthly' ? currentMonthName : `Ano ${currentYearVal}`}</span>
-                <select value={currentDate.getMonth()} onChange={(e) => setCurrentDate(new Date(currentDate.getFullYear(), parseInt(e.target.value), 1))} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10 appearance-none">
+                <select value={currentDate.getMonth()} onChange={(e) => { setCurrentDate(new Date(currentDate.getFullYear(), parseInt(e.target.value), 1)); setSearchTerm(''); }} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10 appearance-none">
                     {Array.from({ length: 12 }, (_, i) => i).map((m) => (<option key={m} value={m}>{format(new Date(2000, m, 1), 'MMMM', { locale: ptBR }).toUpperCase()}</option>))}
                 </select>
             </div>
-            <button onClick={() => setCurrentDate(viewMode === 'monthly' ? addMonths(currentDate, 1) : addYears(currentDate, 1))} className="p-2 hover:bg-blue-700 rounded-full"><ChevronRight size={24} /></button>
+            <button onClick={() => { setCurrentDate(viewMode === 'monthly' ? addMonths(currentDate, 1) : addYears(currentDate, 1)); setSearchTerm(''); }} className="p-2 hover:bg-blue-700 rounded-full"><ChevronRight size={24} /></button>
           </div>
           <div className="flex items-center gap-2 hidden md:flex">
             <button onClick={() => setViewMode(viewMode === 'monthly' ? 'annual' : 'monthly')} className="flex items-center gap-2 bg-blue-700 px-3 py-1 rounded text-sm hover:bg-blue-600 transition-colors uppercase">
@@ -187,21 +197,51 @@ const App: React.FC = () => {
 
       <main className="max-w-5xl mx-auto px-4 py-6 space-y-6">
         {viewMode === 'annual' ? (
-             <AnnualComparison transactions={transactions} currentYear={currentDate} onExportExcel={() => exportToExcel(transactions, 'anual')} onExportPDF={() => exportToPDF(transactions, 'anual')} />
+             <AnnualComparison 
+                transactions={transactions} 
+                currentYear={currentDate} 
+                categories={categories} 
+                monthlyBudgets={monthlyBudgets}
+                onExportExcel={() => exportToExcel(transactions, 'anual')} 
+                onExportPDF={() => exportToPDF(transactions, 'anual')} 
+              />
         ) : (
             <>
                 <SummaryCards transactions={filteredTransactions} categories={effectiveCategories} />
                 <BudgetProgress transactions={filteredTransactions} categories={effectiveCategories} onUpdateCategory={updateCategory} currentMonthName={currentMonthName} />
 
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                    <div className="p-4 border-b flex justify-between items-center bg-gray-50">
-                        <h2 className="text-lg font-bold text-gray-800 uppercase">Lançamentos</h2>
-                        <span className="text-sm text-gray-500">{filteredTransactions.length} registros</span>
+                    <div className="p-4 border-b flex flex-col md:flex-row gap-4 md:items-center justify-between bg-gray-50">
+                        <div className="flex items-center gap-2">
+                             <h2 className="text-lg font-bold text-gray-800 uppercase">Lançamentos</h2>
+                             <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full font-bold">{filteredTransactions.length}</span>
+                        </div>
+                        
+                        <div className="relative flex-1 max-w-md">
+                            <div className="absolute left-3 top-2.5 text-gray-400">
+                                <Search size={18} />
+                            </div>
+                            <input 
+                                type="text" 
+                                placeholder="BUSCAR POR NOME OU VALOR..." 
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="w-full pl-10 pr-10 py-2 bg-white border border-gray-300 rounded-lg text-xs font-bold uppercase focus:ring-2 focus:ring-blue-500 outline-none"
+                            />
+                            {searchTerm && (
+                                <button 
+                                    onClick={() => setSearchTerm('')}
+                                    className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
+                                >
+                                    <X size={18} />
+                                </button>
+                            )}
+                        </div>
                     </div>
                 
                     <div className="md:hidden">
                         <ul className="divide-y divide-gray-100">
-                            {filteredTransactions.map(t => (
+                            {filteredTransactions.length > 0 ? filteredTransactions.map(t => (
                                 <li key={t.id} className="p-4 flex flex-col gap-2">
                                     <div className="flex justify-between items-start">
                                         <div className="flex-1">
@@ -228,7 +268,9 @@ const App: React.FC = () => {
                                         <button onClick={() => handleDeleteClick(t)} className="text-red-600 text-xs font-bold uppercase flex items-center gap-1 p-2"><Trash2 size={14} /> Excluir</button>
                                     </div>
                                 </li>
-                            ))}
+                            )) : (
+                                <li className="p-8 text-center text-gray-400 font-bold uppercase text-sm">Nenhum lançamento encontrado</li>
+                            )}
                         </ul>
                     </div>
 
@@ -244,7 +286,7 @@ const App: React.FC = () => {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
-                            {filteredTransactions.map(t => (
+                            {filteredTransactions.length > 0 ? filteredTransactions.map(t => (
                                 <tr key={t.id} className="hover:bg-gray-50 transition-colors group">
                                 <td className="p-4 text-sm text-gray-600">{formatDate(t.date)}</td>
                                 <td className="p-4 font-bold text-gray-800 uppercase text-sm">
@@ -264,7 +306,11 @@ const App: React.FC = () => {
                                     </div>
                                 </td>
                                 </tr>
-                            ))}
+                            )) : (
+                                <tr>
+                                    <td colSpan={5} className="p-12 text-center text-gray-400 font-bold uppercase text-sm">Nenhum lançamento encontrado</td>
+                                </tr>
+                            )}
                         </tbody>
                         </table>
                     </div>
@@ -300,7 +346,6 @@ const App: React.FC = () => {
                 )}
 
                 <div className="flex flex-col gap-3">
-                    {/* Se for payroll_deduction ou não for single, mostra opções de escopo */}
                     {(deleteConfirmation.type === 'payroll_deduction' || deleteConfirmation.recurrenceType !== 'single') ? (
                         <>
                              <button 
