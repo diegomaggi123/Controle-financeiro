@@ -170,7 +170,14 @@ const App: React.FC = () => {
         <div className="max-w-5xl mx-auto px-4 py-3 flex flex-col md:flex-row items-center justify-between gap-3 md:gap-0">
           <div className="flex w-full md:w-auto items-center justify-between">
               <h1 className="text-lg font-bold truncate">Financeiro Diego</h1>
-              <div className="flex gap-2 md:hidden">
+              <div className="flex gap-1 md:hidden">
+                  <button 
+                    onClick={() => setViewMode(viewMode === 'monthly' ? 'annual' : 'monthly')} 
+                    className="p-2 hover:bg-blue-700 rounded-full"
+                    title={viewMode === 'monthly' ? "Mudar para Anual" : "Mudar para Mensal"}
+                  >
+                    {viewMode === 'monthly' ? <BarChart3 size={22} /> : <List size={22} />}
+                  </button>
                   <button onClick={() => setIsSettingsOpen(true)} className="p-2 hover:bg-blue-700 rounded-full"><SettingsIcon size={22} /></button>
                   <button onClick={async () => { await supabase.auth.signOut(); setSession(null); }} className="p-2 hover:bg-blue-700 rounded-full"><LogOut size={22} /></button>
               </div>
