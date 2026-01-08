@@ -8,7 +8,8 @@ import SummaryCards from './components/SummaryCards';
 import AnnualComparison from './components/AnnualComparison';
 import BudgetProgress from './components/BudgetProgress';
 import Auth from './components/Auth';
-import { Plus, ChevronLeft, ChevronRight, Edit2, Trash2, Settings as SettingsIcon, Calendar, Repeat, Tag, BarChart3, List, LogOut, FileSpreadsheet, FileText, MoreVertical, AlertTriangle, Info, Search, X } from 'lucide-react';
+import GlobalSearch from './components/GlobalSearch';
+import { Plus, ChevronLeft, ChevronRight, Edit2, Trash2, Settings as SettingsIcon, Calendar, Repeat, Tag, BarChart3, List, LogOut, FileSpreadsheet, FileText, MoreVertical, AlertTriangle, Info, Search, X, History } from 'lucide-react';
 import { format, subMonths, addMonths, parseISO, compareAsc, setMonth, setYear, subYears, addYears } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { supabase } from './supabaseClient';
@@ -27,6 +28,7 @@ const App: React.FC = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('monthly');
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState<{ id: string, recurrenceType: string, type: string, groupId: string, description: string } | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -161,6 +163,11 @@ const App: React.FC = () => {
   const updateEstablishment = async (id: string, name: string) => { await supabase.from('establishments').update({ name }).eq('id', id); fetchData(); };
   const deleteEstablishment = async (id: string) => { await supabase.from('establishments').delete().eq('id', id); fetchData(); };
 
+  const handleNavigateToPeriod = (date: Date) => {
+      setCurrentDate(date);
+      setViewMode('monthly');
+  };
+
   if (isLoadingSession) return <div className="min-h-screen flex items-center justify-center bg-gray-50 text-blue-800 font-bold uppercase">Carregando...</div>;
   if (!session) return <Auth />;
 
@@ -171,6 +178,13 @@ const App: React.FC = () => {
           <div className="flex w-full md:w-auto items-center justify-between">
               <h1 className="text-lg font-bold truncate">Financeiro Diego</h1>
               <div className="flex gap-1 md:hidden">
+                  <button 
+                    onClick={() => setIsGlobalSearchOpen(true)} 
+                    className="p-2 hover:bg-blue-700 rounded-full"
+                    title="Pesquisa Global"
+                  >
+                    <History size={22} />
+                  </button>
                   <button 
                     onClick={() => setViewMode(viewMode === 'monthly' ? 'annual' : 'monthly')} 
                     className="p-2 hover:bg-blue-700 rounded-full"
@@ -193,6 +207,13 @@ const App: React.FC = () => {
             <button onClick={() => { setCurrentDate(viewMode === 'monthly' ? addMonths(currentDate, 1) : addYears(currentDate, 1)); setSearchTerm(''); }} className="p-2 hover:bg-blue-700 rounded-full"><ChevronRight size={24} /></button>
           </div>
           <div className="flex items-center gap-2 hidden md:flex">
+            <button 
+                onClick={() => setIsGlobalSearchOpen(true)} 
+                className="flex items-center gap-2 bg-blue-700/50 px-3 py-1 rounded text-sm hover:bg-blue-600 transition-colors uppercase font-bold"
+                title="Histórico Completo"
+            >
+                <History size={16} /> Histórico
+            </button>
             <button onClick={() => setViewMode(viewMode === 'monthly' ? 'annual' : 'monthly')} className="flex items-center gap-2 bg-blue-700 px-3 py-1 rounded text-sm hover:bg-blue-600 transition-colors uppercase">
                 {viewMode === 'monthly' ? <><BarChart3 size={16} /> Anual</> : <><List size={16} /> Mensal</>}
             </button>
@@ -230,7 +251,7 @@ const App: React.FC = () => {
                             </div>
                             <input 
                                 type="text" 
-                                placeholder="BUSCAR POR NOME OU VALOR..." 
+                                placeholder="BUSCAR NESTA LISTA..." 
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
                                 className="w-full pl-10 pr-10 py-2 bg-white border border-gray-300 rounded-lg text-xs font-bold uppercase focus:ring-2 focus:ring-blue-500 outline-none"
@@ -331,6 +352,13 @@ const App: React.FC = () => {
 
       <TransactionForm isOpen={isFormOpen} onClose={() => setIsFormOpen(false)} onSave={handleSaveTransaction} initialData={editingTransaction} categories={categories} establishments={establishments} onAddCategory={addCategory} onAddEstablishment={addEstablishment} />
       {isSettingsOpen && <Settings categories={effectiveCategories} establishments={establishments} onClose={() => setIsSettingsOpen(false)} onAddCategory={addCategory} onUpdateCategory={updateCategory} onDeleteCategory={deleteCategory} onAddEstablishment={addEstablishment} onUpdateEstablishment={updateEstablishment} onDeleteEstablishment={deleteEstablishment} currentMonthName={currentMonthName} />}
+      
+      <GlobalSearch 
+        isOpen={isGlobalSearchOpen} 
+        onClose={() => setIsGlobalSearchOpen(false)} 
+        transactions={transactions} 
+        onNavigateToPeriod={handleNavigateToPeriod} 
+      />
 
       {deleteConfirmation && (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-end md:items-center justify-center z-50 p-0 md:p-4">
