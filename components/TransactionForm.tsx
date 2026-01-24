@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Transaction, RecurrenceType, TransactionType, CategoryData, EstablishmentData } from '../types';
 import { generateId, addMonthsToDate, formatDateForInput, formatCurrency, normalizeCurrency } from '../utils';
 import { X, Plus, Trash2, ArrowLeft, Info } from 'lucide-react';
-import { addMonths, addWeeks, parseISO } from 'date-fns';
+import { format, addMonths, addWeeks, parseISO } from 'date-fns';
 
 interface TransactionFormProps {
   isOpen: boolean;
@@ -25,11 +25,14 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   onAddCategory,
   onAddEstablishment
 }) => {
+  // Obtém a data local no formato YYYY-MM-DD sem o desvio do UTC
+  const getTodayLocal = () => format(new Date(), 'yyyy-MM-dd');
+
   const [description, setDescription] = useState('');
   const [amountDisplay, setAmountDisplay] = useState('0,00');
   const [type, setType] = useState<TransactionType>('expense');
   const [category, setCategory] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(getTodayLocal());
   const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>('single');
   const [frequency, setFrequency] = useState<'monthly' | 'biweekly' | 'weekly'>('monthly');
   const [installments, setInstallments] = useState('2'); 
@@ -68,7 +71,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     setAmountDisplay('0,00');
     setType('expense');
     setCategory(categories.length > 0 ? categories[0].name : '');
-    setDate(new Date().toISOString().split('T')[0]);
+    setDate(getTodayLocal());
     setRecurrenceType('single');
     setFrequency('monthly');
     setInstallments('2');
@@ -114,7 +117,6 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     }
 
     if (initialData) {
-        // Se for Desconto em Folha OU se tiver recorrência, pergunta o escopo
         if (initialData.type === 'payroll_deduction' || type === 'payroll_deduction' || initialData.recurrenceType !== 'single' || recurrenceType !== 'single') {
             setShowUpdateScopeModal(true);
         } else {
@@ -128,6 +130,8 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   const processSave = (scope: 'single' | 'future') => {
     const transactionsToSave: Transaction[] = [];
     const baseGroupId = initialData ? initialData.groupId : generateId();
+    
+    // Tratamento de data para evitar mudança de dia por conta do fuso
     const purchaseDate = parseISO(date);
     const startBillingDate = startNextMonth ? addMonths(purchaseDate, 1) : purchaseDate;
     
