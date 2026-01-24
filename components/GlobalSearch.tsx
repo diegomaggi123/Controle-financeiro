@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Transaction } from '../types';
-import { formatCurrency, formatDate } from '../utils';
+import { formatCurrency, formatDate, normalizeString } from '../utils';
 import { Search, X, Calendar, ArrowRight, History } from 'lucide-react';
 import { parseISO } from 'date-fns';
 
@@ -23,9 +23,9 @@ const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose, transactio
 
   const results = useMemo(() => {
     if (!query.trim() || query.length < 2) return [];
-    const term = query.toLowerCase();
+    const term = normalizeString(query);
     return transactions
-      .filter(t => t.description.toLowerCase().includes(term))
+      .filter(t => normalizeString(t.description).includes(term))
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
       .slice(0, 50); // Limite de 50 resultados para performance
   }, [query, transactions]);

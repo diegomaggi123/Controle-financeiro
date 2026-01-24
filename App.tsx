@@ -1,6 +1,7 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { Transaction, CategoryData, EstablishmentData, MonthlyBudget } from './types';
-import { generateId, formatCurrency, formatDate, getMonthYearKey, getCategoryColor, exportToExcel, exportToPDF } from './utils';
+import { generateId, formatCurrency, formatDate, getMonthYearKey, getCategoryColor, exportToExcel, exportToPDF, normalizeString } from './utils';
 import TransactionForm from './components/TransactionForm';
 import Dashboard from './components/Dashboard';
 import Settings from './components/Settings';
@@ -9,13 +10,15 @@ import AnnualComparison from './components/AnnualComparison';
 import BudgetProgress from './components/BudgetProgress';
 import Auth from './components/Auth';
 import GlobalSearch from './components/GlobalSearch';
-import { Plus, ChevronLeft, ChevronRight, Edit2, Trash2, Settings as SettingsIcon, Calendar, Repeat, Tag, BarChart3, List, LogOut, FileSpreadsheet, FileText, MoreVertical, AlertTriangle, Info, Search, X, History } from 'lucide-react';
-import { format, subMonths, addMonths, parseISO, compareAsc, setMonth, setYear, subYears, addYears } from 'date-fns';
+import { Plus, ChevronLeft, ChevronRight, Edit2, Trash2, Settings as SettingsIcon, Calendar, Repeat, Tag, BarChart3, List, LogOut, FileSpreadsheet, FileText, MoreVertical, AlertTriangle, Info, Search, X, History, ArrowUpDown, ArrowUpNarrowWide, ArrowDownWideNarrow } from 'lucide-react';
+import { format, subMonths, addMonths, parseISO, compareAsc, compareDesc, setMonth, setYear, subYears, addYears } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { supabase } from './supabaseClient';
 import { Session } from '@supabase/supabase-js';
 
 type ViewMode = 'monthly' | 'annual';
+type SortField = 'date' | 'description' | 'category' | 'amount';
+type SortOrder = 'asc' | 'desc';
 
 const App: React.FC = () => {
   const [session, setSession] = useState<Session | null>(null);
@@ -32,6 +35,10 @@ const App: React.FC = () => {
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState<{ id: string, recurrenceType: string, type: string, groupId: string, description: string } | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // Estados de Ordenação
+  const [sortBy, setSortBy] = useState<SortField>('date');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -78,16 +85,48 @@ const App: React.FC = () => {
     let result = transactions.filter(t => t.billingDate.startsWith(currentMonthKey));
 
     if (searchTerm.trim()) {
-        const term = searchTerm.toLowerCase();
+        const term = normalizeString(searchTerm);
         result = result.filter(t => 
-            t.description.toLowerCase().includes(term) || 
+            normalizeString(t.description).includes(term) || 
             t.amount.toString().includes(term) ||
-            t.category.toLowerCase().includes(term)
+            normalizeString(t.category).includes(term)
         );
     }
 
-    return result.sort((a, b) => compareAsc(parseISO(a.date), parseISO(b.date)));
-  }, [transactions, currentDate, currentMonthKey, searchTerm]);
+    // Lógica de Ordenação
+    return result.sort((a, b) => {
+        let comparison = 0;
+        switch (sortBy) {
+            case 'date':
+                comparison = compareAsc(parseISO(a.date), parseISO(b.date));
+                break;
+            case 'description':
+                comparison = a.description.localeCompare(b.description, 'pt-BR');
+                break;
+            case 'category':
+                comparison = a.category.localeCompare(b.category, 'pt-BR');
+                break;
+            case 'amount':
+                comparison = a.amount - b.amount;
+                break;
+        }
+        return sortOrder === 'asc' ? comparison : -comparison;
+    });
+  }, [transactions, currentDate, currentMonthKey, searchTerm, sortBy, sortOrder]);
+
+  const handleSort = (field: SortField) => {
+      if (sortBy === field) {
+          setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+      } else {
+          setSortBy(field);
+          setSortOrder('asc');
+      }
+  };
+
+  const SortIcon = ({ field }: { field: SortField }) => {
+      if (sortBy !== field) return <ArrowUpDown size={14} className="text-gray-300 ml-1" />;
+      return sortOrder === 'asc' ? <ArrowUpNarrowWide size={14} className="text-blue-600 ml-1" /> : <ArrowDownWideNarrow size={14} className="text-blue-600 ml-1" />;
+  };
 
   const effectiveCategories = useMemo(() => {
     return categories.map(cat => {
@@ -105,6 +144,7 @@ const App: React.FC = () => {
         id: t.id, user_id: session.user.id, group_id: t.groupId, description: t.description, amount: t.amount,
         type: t.type, category: t.category, date: t.date, billing_date: t.billingDate, 
         recurrence_type: t.recurrenceType,
+        // Fix for errors on line 146/147: accessing property names from Transaction type in camelCase
         installment_current: t.installmentCurrent, 
         installment_total: t.installmentTotal
     });
@@ -154,7 +194,7 @@ const App: React.FC = () => {
         await supabase.from('categories').update({ name, budget }).eq('id', id);
         await supabase.from('monthly_budgets').delete().eq('category_id', id).eq('month_year', currentMonthKey);
       } else {
-        await supabase.from('monthly_budgets').upsert({ category_id: id, month_year: currentMonthKey, amount: budget, user_id: session.user.id }, { onConflict: 'category_id, month_year' });
+        await supabase.from('monthly_budgets').upsert({ category_id: id, name, month_year: currentMonthKey, amount: budget, user_id: session.user.id }, { onConflict: 'category_id, month_year' });
       }
       fetchData();
   };
@@ -245,25 +285,47 @@ const App: React.FC = () => {
                              <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full font-bold">{filteredTransactions.length}</span>
                         </div>
                         
-                        <div className="relative flex-1 max-w-md">
-                            <div className="absolute left-3 top-2.5 text-gray-400">
-                                <Search size={18} />
+                        <div className="flex flex-col md:flex-row gap-3 flex-1 max-w-2xl">
+                            <div className="relative flex-1">
+                                <div className="absolute left-3 top-2.5 text-gray-400">
+                                    <Search size={18} />
+                                </div>
+                                <input 
+                                    type="text" 
+                                    placeholder="BUSCAR NESTA LISTA..." 
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="w-full pl-10 pr-10 py-2 bg-white border border-gray-300 rounded-lg text-xs font-bold uppercase focus:ring-2 focus:ring-blue-500 outline-none"
+                                />
+                                {searchTerm && (
+                                    <button 
+                                        onClick={() => setSearchTerm('')}
+                                        className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
+                                    >
+                                        <X size={18} />
+                                    </button>
+                                )}
                             </div>
-                            <input 
-                                type="text" 
-                                placeholder="BUSCAR NESTA LISTA..." 
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="w-full pl-10 pr-10 py-2 bg-white border border-gray-300 rounded-lg text-xs font-bold uppercase focus:ring-2 focus:ring-blue-500 outline-none"
-                            />
-                            {searchTerm && (
-                                <button 
-                                    onClick={() => setSearchTerm('')}
-                                    className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
+
+                            {/* Mobile Sort Controls */}
+                            <div className="flex md:hidden items-center gap-2">
+                                <select 
+                                    value={sortBy} 
+                                    onChange={(e) => setSortBy(e.target.value as SortField)}
+                                    className="flex-1 p-2 bg-white border border-gray-300 rounded-lg text-[10px] font-bold uppercase outline-none"
                                 >
-                                    <X size={18} />
+                                    <option value="date">ORDENAR POR DATA</option>
+                                    <option value="description">ORDENAR POR DESCRIÇÃO</option>
+                                    <option value="category">ORDENAR POR CATEGORIA</option>
+                                    <option value="amount">ORDENAR POR VALOR</option>
+                                </select>
+                                <button 
+                                    onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+                                    className="p-2 bg-blue-50 text-blue-600 border border-blue-200 rounded-lg"
+                                >
+                                    {sortOrder === 'asc' ? <ArrowUpNarrowWide size={20} /> : <ArrowDownWideNarrow size={20} />}
                                 </button>
-                            )}
+                            </div>
                         </div>
                     </div>
                 
@@ -305,12 +367,20 @@ const App: React.FC = () => {
                     <div className="hidden md:block overflow-x-auto">
                         <table className="w-full text-left border-collapse">
                         <thead>
-                            <tr className="bg-gray-50 text-gray-500 text-xs border-b uppercase font-bold">
-                            <th className="p-4">Data</th>
-                            <th className="p-4">Descrição</th>
-                            <th className="p-4">Categoria</th>
-                            <th className="p-4 text-right">Valor</th>
-                            <th className="p-4 text-center">Ações</th>
+                            <tr className="bg-gray-50 text-gray-500 text-[10px] border-b uppercase font-bold">
+                                <th onClick={() => handleSort('date')} className="p-4 cursor-pointer hover:bg-gray-100 transition-colors">
+                                    <div className="flex items-center">Data <SortIcon field="date" /></div>
+                                </th>
+                                <th onClick={() => handleSort('description')} className="p-4 cursor-pointer hover:bg-gray-100 transition-colors">
+                                    <div className="flex items-center">Descrição <SortIcon field="description" /></div>
+                                </th>
+                                <th onClick={() => handleSort('category')} className="p-4 cursor-pointer hover:bg-gray-100 transition-colors">
+                                    <div className="flex items-center">Categoria <SortIcon field="category" /></div>
+                                </th>
+                                <th onClick={() => handleSort('amount')} className="p-4 text-right cursor-pointer hover:bg-gray-100 transition-colors">
+                                    <div className="flex items-center justify-end">Valor <SortIcon field="amount" /></div>
+                                </th>
+                                <th className="p-4 text-center">Ações</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
@@ -350,7 +420,16 @@ const App: React.FC = () => {
 
       <button onClick={() => { setEditingTransaction(null); setIsFormOpen(true); }} className="fixed bottom-6 right-6 bg-blue-800 text-white w-14 h-14 rounded-full shadow-xl hover:scale-105 transition-all z-40 flex items-center justify-center"><Plus size={28} /></button>
 
-      <TransactionForm isOpen={isFormOpen} onClose={() => setIsFormOpen(false)} onSave={handleSaveTransaction} initialData={editingTransaction} categories={categories} establishments={establishments} onAddCategory={addCategory} onAddEstablishment={addEstablishment} />
+      <TransactionForm 
+        isOpen={isFormOpen} 
+        onClose={() => setIsFormOpen(false)} 
+        onSave={handleSaveTransaction} 
+        initialData={editingTransaction} 
+        categories={categories} 
+        establishments={establishments} 
+        onAddCategory={addCategory} 
+        onAddEstablishment={addEstablishment} 
+      />
       {isSettingsOpen && <Settings categories={effectiveCategories} establishments={establishments} onClose={() => setIsSettingsOpen(false)} onAddCategory={addCategory} onUpdateCategory={updateCategory} onDeleteCategory={deleteCategory} onAddEstablishment={addEstablishment} onUpdateEstablishment={updateEstablishment} onDeleteEstablishment={deleteEstablishment} currentMonthName={currentMonthName} />}
       
       <GlobalSearch 

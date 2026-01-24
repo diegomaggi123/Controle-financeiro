@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Transaction, RecurrenceType, TransactionType, CategoryData, EstablishmentData } from '../types';
-import { generateId, addMonthsToDate, formatDateForInput, formatCurrency, normalizeCurrency } from '../utils';
-import { X, Plus, Trash2, ArrowLeft, Info } from 'lucide-react';
+import { generateId, addMonthsToDate, formatDateForInput, formatCurrency, normalizeCurrency, normalizeString } from '../utils';
+import { X, Plus, Trash2, ArrowLeft, Info, Loader2 } from 'lucide-react';
 import { format, addMonths, addWeeks, parseISO } from 'date-fns';
+import { GoogleGenAI } from "@google/genai";
 
 interface TransactionFormProps {
   isOpen: boolean;
@@ -40,6 +41,10 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   const [newCategoryName, setNewCategoryName] = useState('');
   const [showAddCategory, setShowAddCategory] = useState(false);
   const [showUpdateScopeModal, setShowUpdateScopeModal] = useState(false);
+  const [isCorrecting, setIsCorrecting] = useState(false);
+  
+  // Estado para lembrar o que foi corrigido e evitar loops se o usuário quiser forçar o erro
+  const [lastCorrectedFrom, setLastCorrectedFrom] = useState<string>('');
 
   useEffect(() => {
     if (initialData) {
@@ -78,6 +83,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     setStartNextMonth(false);
     setNewCategoryName('');
     setShowAddCategory(false);
+    setLastCorrectedFrom('');
   };
 
   const handleAmountChange = (value: string) => {
@@ -107,6 +113,51 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
       setCategory(upperName);
       setNewCategoryName('');
       setShowAddCategory(false);
+    }
+  };
+
+  const handleBlurDescription = async () => {
+    const currentText = description.trim().toUpperCase();
+    if (!currentText) return;
+
+    // 1. Tentar encontrar na lista manual primeiro (Prioridade absoluta)
+    const normalizedInput = normalizeString(currentText);
+    const manualMatch = establishments.find(est => normalizeString(est.name) === normalizedInput);
+    if (manualMatch) {
+      setDescription(manualMatch.name.toUpperCase());
+      setLastCorrectedFrom(''); // Limpa pois é um match oficial
+      return;
+    }
+
+    // 2. Checar se o usuário está "re-digitando" algo que a IA já corrigiu antes (Override manual)
+    if (currentText === lastCorrectedFrom) {
+      // Se ele digitou de novo o que estava ANTES da correção, paramos por aqui
+      return;
+    }
+
+    // 3. Se não for match manual nem override, usar IA para correção
+    try {
+      setIsCorrecting(true);
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: `Corrija apenas a acentuação e cedilha deste texto para o português correto, mantendo tudo em maiúsculas. Se o texto parecer ser um nome próprio em inglês, marca comercial ou não precisar de acentos, retorne exatamente o texto original. Não adicione pontuação ou explicações. Texto: ${currentText}`,
+      });
+
+      const corrected = response.text?.trim().toUpperCase();
+      
+      if (corrected && corrected !== currentText) {
+        // Se a IA sugeriu algo novo:
+        setDescription(corrected);
+        setLastCorrectedFrom(currentText); // Memorizamos de onde veio para permitir o override se o usuário mudar de volta
+      } else {
+        // Se a IA retornou o mesmo texto (não precisava de correção)
+        setLastCorrectedFrom('');
+      }
+    } catch (error) {
+      console.error("Erro ao corrigir com IA:", error);
+    } finally {
+      setIsCorrecting(false);
     }
   };
 
@@ -244,8 +295,23 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-gray-700 mb-1 uppercase">Descrição / Local</label>
-            <input list="establishments-list" type="text" value={description} onChange={(e) => setDescription(e.target.value.toUpperCase())} placeholder="EX: SUPERMERCADO" className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white uppercase font-bold text-sm" />
+            <div className="flex justify-between items-center mb-1">
+                <label className="block text-xs font-bold text-gray-700 uppercase">Descrição / Local</label>
+                {isCorrecting && (
+                    <div className="flex items-center gap-1 text-[10px] text-blue-600 font-bold animate-pulse">
+                        <Loader2 size={10} className="animate-spin" /> CORRIGINDO ACENTOS...
+                    </div>
+                )}
+            </div>
+            <input 
+                list="establishments-list" 
+                type="text" 
+                value={description} 
+                onChange={(e) => setDescription(e.target.value.toUpperCase())} 
+                onBlur={handleBlurDescription}
+                placeholder="EX: SUPERMERCADO" 
+                className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white uppercase font-bold text-sm transition-colors ${isCorrecting ? 'border-blue-300' : 'border-gray-300'}`} 
+            />
             <datalist id="establishments-list">
                 {establishments.map(est => (<option key={est.id} value={est.name.toUpperCase()} />))}
             </datalist>
