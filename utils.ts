@@ -8,14 +8,6 @@ import { Transaction } from './types';
 
 export const generateId = (): string => uuidv4();
 
-// Remove acentos e caracteres especiais para comparação
-export const normalizeString = (str: string): string => {
-  return str
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toUpperCase();
-};
-
 // Função crucial para evitar erros como 0.1 + 0.2 = 0.30000000004
 export const normalizeCurrency = (value: number): number => {
   return Math.round(value * 100) / 100;
