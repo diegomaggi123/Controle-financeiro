@@ -36,6 +36,10 @@ export const getMonthYearKey = (date: Date): string => {
   return format(date, 'yyyy-MM');
 };
 
+export const normalizeString = (str: string): string => {
+  return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+};
+
 export const addMonthsToDate = (dateStr: string, months: number): string => {
   const date = parseISO(dateStr);
   return addMonths(date, months).toISOString();
@@ -70,6 +74,7 @@ export const exportToExcel = (transactions: Transaction[], fileName: string = 't
     'Descrição': t.description,
     'Categoria': t.category,
     'Tipo': t.type === 'income' ? 'Receita' : t.type === 'expense' ? 'Despesa' : 'Desc. Folha',
+    'Cartão': t.isCreditCard ? 'SIM' : 'NÃO',
     'Valor': normalizeCurrency(t.amount),
     'Repetição': t.recurrenceType === 'single' ? 'À Vista' : 
                  t.recurrenceType === 'fixed' ? 'Fixo' :
@@ -85,7 +90,7 @@ export const exportToExcel = (transactions: Transaction[], fileName: string = 't
 
 export const exportToPDF = (transactions: Transaction[], title: string = 'Relatório Financeiro') => {
   const doc = new jsPDF();
-  const tableColumn = ["Data", "Descrição", "Categoria", "Tipo", "Valor", "Detalhes"];
+  const tableColumn = ["Data", "Descrição", "Cat", "Forma", "Valor", "Rep"];
   const tableRows: any[] = [];
 
   transactions.forEach(t => {
@@ -93,7 +98,7 @@ export const exportToPDF = (transactions: Transaction[], title: string = 'Relat�
       formatDate(t.date),
       t.description,
       t.category,
-      t.type === 'income' ? 'Receita' : t.type === 'expense' ? 'Despesa' : 'Desc. Folha',
+      t.isCreditCard ? 'Cartão' : (t.type === 'income' ? 'Receita' : 'Outro'),
       formatCurrency(t.amount),
       t.recurrenceType === 'single' ? '-' : 
       t.recurrenceType === 'fixed' ? 'Fixo' : 
@@ -103,5 +108,12 @@ export const exportToPDF = (transactions: Transaction[], title: string = 'Relat�
   });
 
   doc.text(title, 14, 15);
+  autoTable(doc, {
+    head: [tableColumn],
+    body: tableRows,
+    startY: 20,
+    theme: 'striped',
+    styles: { fontSize: 8, cellPadding: 2 }
+  });
   doc.save(`${title.toLowerCase().replace(/\s+/g, '_')}.pdf`);
 };

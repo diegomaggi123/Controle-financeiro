@@ -14,6 +14,7 @@ export interface Transaction {
   recurrenceType: RecurrenceType;
   installmentCurrent?: number;
   installmentTotal?: number;
+  isCreditCard?: boolean;
 }
 
 export interface CategoryData {
@@ -40,4 +41,4 @@ export interface ChartDataPoint {
   percentage: string;
 }
 
-export type UpdateMode = 'single' | 'future' | 'all'; // 'all' not requested but good practice, keeping to 'single' | 'future' based on request
+export type UpdateMode = 'single' | 'future' | 'all';

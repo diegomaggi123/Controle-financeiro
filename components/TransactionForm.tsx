@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Transaction, RecurrenceType, TransactionType, CategoryData, EstablishmentData } from '../types';
-import { generateId, addMonthsToDate, formatDateForInput, formatCurrency, normalizeCurrency } from '../utils';
-import { X, Plus, Trash2, ArrowLeft, Info } from 'lucide-react';
+import { generateId, addMonthsToDate, formatDateForInput, formatCurrency, normalizeCurrency, normalizeString } from '../utils';
+import { X, Plus, Trash2, ArrowLeft, Info, Sparkles, CreditCard } from 'lucide-react';
 import { format, addMonths, addWeeks, parseISO } from 'date-fns';
 
 interface TransactionFormProps {
@@ -15,6 +15,33 @@ interface TransactionFormProps {
   onAddEstablishment: (name: string) => void;
 }
 
+const COMMON_TERMS: Record<string, string> = {
+  'FARMACIA': 'FARMÁCIA',
+  'PADARIA': 'PADARIA',
+  'ALUGUEL': 'ALUGUEL',
+  'AGUA': 'ÁGUA',
+  'CARTAO': 'CARTÃO',
+  'RESTAURANTE': 'RESTAURANTE',
+  'CONDOMINIO': 'CONDOMÍNIO',
+  'GASOLINA': 'GASOLINA',
+  'COMBUSTIVEL': 'COMBUSTÍVEL',
+  'SAUDE': 'SAÚDE',
+  'ALIMENTACAO': 'ALIMENTAÇÃO',
+  'EDUCACAO': 'EDUCAÇÃO',
+  'VESTUARIO': 'VESTUÁRIO',
+  'CARTORIO': 'CARTÓRIO',
+  'MANUTENCAO': 'MANUTENÇÃO',
+  'ACADEMIA': 'ACADEMIA',
+  'CONVENIO': 'CONVÊNIO',
+  'TELEFONE': 'TELEFONE',
+  'MOVEIS': 'MÓVEIS',
+  'REFEICAO': 'REFEIÇÃO',
+  'PADRAO': 'PADRÃO',
+  'PENSAO': 'PENSÃO',
+  'DOACAO': 'DOAÇÃO',
+  'INFORMATICA': 'INFORMÁTICA'
+};
+
 const TransactionForm: React.FC<TransactionFormProps> = ({
   isOpen,
   onClose,
@@ -25,7 +52,6 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   onAddCategory,
   onAddEstablishment
 }) => {
-  // Obtém a data local no formato YYYY-MM-DD sem o desvio do UTC
   const getTodayLocal = () => format(new Date(), 'yyyy-MM-dd');
 
   const [description, setDescription] = useState('');
@@ -37,6 +63,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   const [frequency, setFrequency] = useState<'monthly' | 'biweekly' | 'weekly'>('monthly');
   const [installments, setInstallments] = useState('2'); 
   const [startNextMonth, setStartNextMonth] = useState(false);
+  const [isCreditCard, setIsCreditCard] = useState(true);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [showAddCategory, setShowAddCategory] = useState(false);
   const [showUpdateScopeModal, setShowUpdateScopeModal] = useState(false);
@@ -52,6 +79,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
       setDate(formatDateForInput(initialData.date)); 
       setRecurrenceType(initialData.recurrenceType);
       setFrequency('monthly'); 
+      setIsCreditCard(initialData.isCreditCard !== undefined ? initialData.isCreditCard : true);
       
       if (initialData.recurrenceType === 'installment' || initialData.recurrenceType === 'repeat') {
         setInstallments(initialData.installmentTotal?.toString() || '2');
@@ -61,7 +89,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
       const bDate = parseISO(initialData.billingDate);
       const isNextMonth = bDate.getMonth() !== pDate.getMonth() || bDate.getFullYear() !== pDate.getFullYear();
       setStartNextMonth(isNextMonth);
-    } else {
+    } else if (isOpen) {
       resetForm();
     }
   }, [initialData, isOpen]);
@@ -76,6 +104,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     setFrequency('monthly');
     setInstallments('2');
     setStartNextMonth(false);
+    setIsCreditCard(true);
     setNewCategoryName('');
     setShowAddCategory(false);
   };
@@ -110,12 +139,26 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     }
   };
 
+  const handleBlurDescription = () => {
+    const currentText = description.trim().toUpperCase();
+    if (!currentText) return;
+    const normalizedInput = normalizeString(currentText);
+    const manualMatch = establishments.find(est => normalizeString(est.name) === normalizedInput);
+    if (manualMatch) {
+      setDescription(manualMatch.name.toUpperCase());
+      return;
+    }
+    if (COMMON_TERMS[normalizedInput]) {
+      setDescription(COMMON_TERMS[normalizedInput]);
+      return;
+    }
+  };
+
   const handleSubmit = () => {
     if (!description || getNumericAmount() <= 0 || !category || !date) {
       alert('Preencha todos os campos obrigatórios.');
       return;
     }
-
     if (initialData) {
         if (initialData.type === 'payroll_deduction' || type === 'payroll_deduction' || initialData.recurrenceType !== 'single' || recurrenceType !== 'single') {
             setShowUpdateScopeModal(true);
@@ -131,7 +174,6 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     const transactionsToSave: Transaction[] = [];
     const baseGroupId = initialData ? initialData.groupId : generateId();
     
-    // Tratamento de data para evitar mudança de dia por conta do fuso
     const purchaseDate = parseISO(date);
     const startBillingDate = startNextMonth ? addMonths(purchaseDate, 1) : purchaseDate;
     
@@ -154,23 +196,40 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
             category,
             date: date, 
             billingDate: startBillingDate.toISOString(),
-            recurrenceType: 'single'
+            recurrenceType: 'single',
+            isCreditCard: type === 'expense' ? isCreditCard : false
         });
-    } else if (recurrenceType === 'fixed' || recurrenceType === 'repeat' || recurrenceType === 'installment') {
-        const totalItems = recurrenceType === 'installment' || recurrenceType === 'repeat' ? parseInt(installments) : (scope === 'single' ? 1 : 24);
-        const loopCount = scope === 'single' ? 1 : totalItems;
+    } else {
+        // Tipos Recorrentes (Parcelado, Repetir, Fixo)
+        const totalItems = (recurrenceType === 'installment' || recurrenceType === 'repeat') 
+            ? parseInt(installments) 
+            : 24;
+            
+        // Se estamos editando "futuros", começamos da parcela atual. Se for novo, começamos da 1.
+        const startInstallmentNum = (initialData && scope === 'future' && (recurrenceType === 'installment' || recurrenceType === 'repeat'))
+            ? (initialData.installmentCurrent || 1)
+            : 1;
+            
+        // Número de iterações baseado no escopo
+        const loopLimit = scope === 'single' ? 1 : (totalItems - startInstallmentNum + 1);
 
-        for (let i = 0; i < loopCount; i++) {
-             const currentNum = scope === 'single' && initialData ? (initialData.installmentCurrent || 1) : (i + 1);
+        for (let i = 0; i < loopLimit; i++) {
+             const currentInstallmentNum = startInstallmentNum + i;
+             // O offset da data é baseado no 'i' (índice da iteração atual)
              const billDate = getNextDate(startBillingDate, i, frequency);
              const curDate = getNextDate(purchaseDate, i, frequency);
+             
+             // Na edição "single", mantém o ID original. Na criação ou "future", gera novos IDs (os futuros serão recriados pelo App.tsx)
              const id = (initialData && scope === 'single' && i === 0) ? initialData.id : generateId();
 
              let finalAmount = parsedAmount;
-             if (recurrenceType === 'installment') {
+             
+             // CORREÇÃO CRUCIAL: Só divide o valor se estiver CRIANDO um novo parcelamento.
+             // Se estiver EDITANDO, o parsedAmount já é o valor da parcela individual.
+             if (recurrenceType === 'installment' && !initialData) {
                  const baseVal = Math.floor((parsedAmount / totalItems) * 100) / 100;
                  const remainder = normalizeCurrency(parsedAmount - (baseVal * totalItems));
-                 finalAmount = currentNum === 1 ? normalizeCurrency(baseVal + remainder) : baseVal;
+                 finalAmount = currentInstallmentNum === 1 ? normalizeCurrency(baseVal + remainder) : baseVal;
              }
 
              transactionsToSave.push({
@@ -183,8 +242,9 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                  date: curDate.toISOString(), 
                  billingDate: billDate.toISOString(),
                  recurrenceType: recurrenceType,
-                 installmentCurrent: (recurrenceType !== 'fixed') ? currentNum : undefined,
-                 installmentTotal: (recurrenceType !== 'fixed') ? totalItems : undefined
+                 installmentCurrent: (recurrenceType !== 'fixed') ? currentInstallmentNum : undefined,
+                 installmentTotal: (recurrenceType !== 'fixed') ? totalItems : undefined,
+                 isCreditCard: type === 'expense' ? isCreditCard : false
              });
         }
     }
@@ -201,7 +261,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
       {showUpdateScopeModal ? (
          <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-[60]">
              <div className="bg-white rounded-lg p-6 w-full max-w-sm shadow-xl">
-                 <h3 className="text-lg font-bold mb-4 text-gray-800 uppercase">Aplicar alterações</h3>
+                 <h3 className="text-lg font-bold mb-4 text-gray-800 uppercase tracking-tighter">Aplicar alterações</h3>
                  <p className="mb-6 text-gray-600 text-sm">Como deseja aplicar as mudanças neste {(type === 'payroll_deduction' || initialData?.type === 'payroll_deduction') ? 'Desconto em Folha' : 'Lançamento'}?</p>
                  <div className="flex flex-col gap-3">
                      <button onClick={() => processSave('single')} className="p-3 bg-gray-100 hover:bg-gray-200 rounded text-left font-bold uppercase text-xs text-gray-700">Apenas neste mês</button>
@@ -215,7 +275,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
         <div className="flex justify-between items-center p-4 border-b bg-white shrink-0">
           <div className="flex items-center gap-2">
              <button onClick={onClose} className="md:hidden p-1 -ml-1 text-gray-600"><ArrowLeft size={24} /></button>
-             <h2 className="text-xl font-bold text-gray-800 uppercase">{initialData ? 'Editar' : 'Novo Lançamento'}</h2>
+             <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tighter">{initialData ? 'Editar' : 'Novo Lançamento'}</h2>
           </div>
           <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full hidden md:block"><X size={24} /></button>
         </div>
@@ -235,7 +295,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-gray-700 mb-1 uppercase">Valor</label>
+            <label className="block text-xs font-bold text-gray-700 mb-1 uppercase tracking-tighter">Valor {initialData && (initialData.recurrenceType === 'installment') ? '(DA PARCELA)' : (recurrenceType === 'installment' ? '(TOTAL DA COMPRA)' : '')}</label>
             <div className="relative">
               <span className="absolute left-4 top-3.5 text-gray-500 text-lg font-bold">R$</span>
               <input type="tel" value={amountDisplay} onChange={(e) => handleAmountChange(e.target.value)} className="w-full pl-12 p-3 text-2xl border border-gray-300 rounded-xl focus:ring-4 focus:ring-blue-100 focus:border-blue-500 outline-none font-bold text-gray-800 bg-blue-50/30" placeholder="0,00" />
@@ -244,15 +304,28 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-gray-700 mb-1 uppercase">Descrição / Local</label>
-            <input list="establishments-list" type="text" value={description} onChange={(e) => setDescription(e.target.value.toUpperCase())} placeholder="EX: SUPERMERCADO" className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white uppercase font-bold text-sm" />
+            <div className="flex justify-between items-center mb-1">
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-tighter">Descrição / Local</label>
+                <div className="flex items-center gap-1 text-[9px] text-blue-500 font-bold uppercase">
+                    <Sparkles size={10} /> Corretor Ativo
+                </div>
+            </div>
+            <input 
+                list="establishments-list" 
+                type="text" 
+                value={description} 
+                onChange={(e) => setDescription(e.target.value.toUpperCase())} 
+                onBlur={handleBlurDescription}
+                placeholder="EX: SUPERMERCADO" 
+                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white uppercase font-bold text-sm" 
+            />
             <datalist id="establishments-list">
                 {establishments.map(est => (<option key={est.id} value={est.name.toUpperCase()} />))}
             </datalist>
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-gray-700 mb-1 uppercase">Categoria</label>
+            <label className="block text-xs font-bold text-gray-700 mb-1 uppercase tracking-tighter">Categoria</label>
             {!showAddCategory ? (
                 <div className="flex gap-2">
                     <select value={category} onChange={(e) => setCategory(e.target.value)} className="flex-1 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white uppercase font-bold text-sm">
@@ -272,12 +345,29 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-gray-700 mb-1 uppercase">Data</label>
+            <label className="block text-xs font-bold text-gray-700 mb-1 uppercase tracking-tighter">Data</label>
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-bold bg-white" />
           </div>
 
+          {type === 'expense' && (
+            <div className={`p-4 rounded-xl border-2 transition-all flex items-center justify-between cursor-pointer ${isCreditCard ? 'bg-blue-50 border-blue-600' : 'bg-gray-50 border-gray-100'}`} onClick={() => setIsCreditCard(!isCreditCard)}>
+                <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-lg ${isCreditCard ? 'bg-blue-600 text-white' : 'bg-gray-300 text-gray-500'}`}>
+                        <CreditCard size={20} />
+                    </div>
+                    <div>
+                        <p className={`text-xs font-bold uppercase ${isCreditCard ? 'text-blue-800' : 'text-gray-500'}`}>Cartão de Crédito?</p>
+                        <p className="text-[10px] text-gray-400 uppercase">Marcar se foi pago com cartão</p>
+                    </div>
+                </div>
+                <div className={`w-10 h-5 rounded-full relative transition-colors ${isCreditCard ? 'bg-blue-600' : 'bg-gray-300'}`}>
+                    <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${isCreditCard ? 'right-0.5' : 'left-0.5'}`}></div>
+                </div>
+            </div>
+          )}
+
           <div>
-            <label className="block text-xs font-bold text-gray-700 mb-1 uppercase">Repetição</label>
+            <label className="block text-xs font-bold text-gray-700 mb-1 uppercase tracking-tighter">Repetição</label>
             <select value={recurrenceType} onChange={(e) => setRecurrenceType(e.target.value as RecurrenceType)} className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white uppercase font-bold text-sm">
               <option value="single">À VISTA (ÚNICO)</option>
               <option value="installment">PARCELADO</option>
@@ -289,7 +379,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
           {(recurrenceType === 'fixed' || recurrenceType === 'repeat' || recurrenceType === 'installment') && (
             <div className="flex gap-3">
                 <div className="flex-1">
-                    <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Frequência</label>
+                    <label className="block text-xs font-bold text-gray-500 mb-1 uppercase tracking-tighter">Frequência</label>
                     <select value={frequency} onChange={(e) => setFrequency(e.target.value as any)} className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white uppercase text-xs font-bold">
                         <option value="monthly">MENSAL</option>
                         <option value="weekly">SEMANAL</option>
@@ -298,8 +388,8 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                 </div>
                 {(recurrenceType === 'installment' || recurrenceType === 'repeat') && (
                     <div className="flex-1">
-                        <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">{recurrenceType === 'installment' ? 'Parcelas' : 'Vezes'}</label>
-                        <input type="number" min="2" max="99" value={installments} onChange={(e) => setInstallments(e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-bold text-center" />
+                        <label className="block text-xs font-bold text-gray-500 mb-1 uppercase tracking-tighter">{recurrenceType === 'installment' ? 'Parcelas' : 'Vezes'}</label>
+                        <input type="number" min="1" max="99" value={installments} onChange={(e) => setInstallments(e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-bold text-center" />
                     </div>
                 )}
             </div>
@@ -307,7 +397,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
 
           <div className="flex items-center gap-3 py-2 bg-gray-50 p-3 rounded-lg border border-gray-100">
             <input type="checkbox" id="startNextMonth" checked={startNextMonth} onChange={(e) => setStartNextMonth(e.target.checked)} className="w-6 h-6 text-blue-600 rounded border-gray-300 focus:ring-blue-500" />
-            <label htmlFor="startNextMonth" className="text-xs text-gray-700 select-none uppercase font-bold">Cobrar somente no mês seguinte?</label>
+            <label htmlFor="startNextMonth" className="text-xs text-gray-700 select-none uppercase font-bold tracking-tighter">Cobrar somente no mês seguinte?</label>
           </div>
         </div>
 

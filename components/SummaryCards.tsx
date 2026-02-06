@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { Transaction, CategoryData } from '../types';
 import { formatCurrency, normalizeCurrency } from '../utils';
-import { ArrowDownCircle, ArrowUpCircle, Wallet, Info } from 'lucide-react';
+import { ArrowDownCircle, ArrowUpCircle, Wallet, CreditCard } from 'lucide-react';
 
 interface SummaryCardsProps {
   transactions: Transaction[];
@@ -10,7 +10,7 @@ interface SummaryCardsProps {
 
 const SummaryCards: React.FC<SummaryCardsProps> = ({ transactions, categories }) => {
   const summary = useMemo(() => {
-    // 1. Calcular Receitas Reais + Descontos em Folha (para compor a Receita Bruta)
+    // 1. Calcular Receitas Reais + Descontos em Folha
     const incomes = transactions
       .filter(t => t.type === 'income')
       .reduce((sum, t) => sum + t.amount, 0);
@@ -21,8 +21,12 @@ const SummaryCards: React.FC<SummaryCardsProps> = ({ transactions, categories })
 
     const grossIncome = incomes + payrollDeductions;
 
-    // 2. Mapear gastos reais por categoria
-    // Inclui despesas normais e descontos em folha
+    // 2. Calcular Total apenas em Cartão de Crédito
+    const creditCardTotal = transactions
+      .filter(t => t.type === 'expense' && t.isCreditCard === true)
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    // 3. Mapear gastos reais por categoria
     const expensesMap = transactions
       .filter(t => t.type === 'expense' || t.type === 'payroll_deduction')
       .reduce((acc, t) => {
@@ -30,7 +34,7 @@ const SummaryCards: React.FC<SummaryCardsProps> = ({ transactions, categories })
         return acc;
       }, {} as Record<string, number>);
 
-    // 3. Calcular Despesa Comprometida (Maior entre Gasto Real e Meta)
+    // 4. Calcular Despesa Comprometida (Maior entre Gasto Real e Meta)
     let committedExpense = 0;
     const processedCategories = new Set<string>();
 
@@ -50,7 +54,8 @@ const SummaryCards: React.FC<SummaryCardsProps> = ({ transactions, categories })
     return { 
         income: normalizeCurrency(grossIncome), 
         expense: normalizeCurrency(committedExpense),
-        totalDeductions: normalizeCurrency(payrollDeductions)
+        totalDeductions: normalizeCurrency(payrollDeductions),
+        creditCardTotal: normalizeCurrency(creditCardTotal)
     };
   }, [transactions, categories]);
 
@@ -77,7 +82,14 @@ const SummaryCards: React.FC<SummaryCardsProps> = ({ transactions, categories })
          <div>
            <div className="mb-1">
             <h3 className="text-gray-500 font-medium text-sm uppercase tracking-wider">Total Comprometido</h3>
-            <span className="text-[10px] text-gray-400 uppercase">(Meta ou Gasto Real)</span>
+            <div className="flex items-center gap-2">
+                <span className="text-[10px] text-gray-400 uppercase">(Meta ou Real)</span>
+                {summary.creditCardTotal > 0 && (
+                    <span className="text-[10px] text-blue-600 font-bold uppercase flex items-center gap-1">
+                        <CreditCard size={10} /> {formatCurrency(summary.creditCardTotal)} em cartão
+                    </span>
+                )}
+            </div>
           </div>
           <p className="text-2xl font-bold text-gray-800">{formatCurrency(summary.expense)}</p>
          </div>

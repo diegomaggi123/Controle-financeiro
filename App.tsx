@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Transaction, CategoryData, EstablishmentData, MonthlyBudget } from './types';
-import { generateId, formatCurrency, formatDate, getMonthYearKey, getCategoryColor, exportToExcel, exportToPDF } from './utils';
+import { generateId, formatCurrency, formatDate, getMonthYearKey, getCategoryColor, exportToExcel, exportToPDF, normalizeString } from './utils';
 import TransactionForm from './components/TransactionForm';
 import Dashboard from './components/Dashboard';
 import Settings from './components/Settings';
@@ -9,13 +9,16 @@ import AnnualComparison from './components/AnnualComparison';
 import BudgetProgress from './components/BudgetProgress';
 import Auth from './components/Auth';
 import GlobalSearch from './components/GlobalSearch';
-import { Plus, ChevronLeft, ChevronRight, Edit2, Trash2, Settings as SettingsIcon, Calendar, Repeat, Tag, BarChart3, List, LogOut, FileSpreadsheet, FileText, MoreVertical, AlertTriangle, Info, Search, X, History } from 'lucide-react';
-import { format, subMonths, addMonths, parseISO, compareAsc, setMonth, setYear, subYears, addYears } from 'date-fns';
+import { Plus, ChevronLeft, ChevronRight, Edit2, Trash2, Settings as SettingsIcon, Calendar, Repeat, Tag, BarChart3, List, LogOut, FileSpreadsheet, FileText, MoreVertical, AlertTriangle, Info, Search, X, History, ArrowUpDown, ArrowUpNarrowWide, ArrowDownWideNarrow, CreditCard } from 'lucide-react';
+import { format, subMonths, addMonths, parseISO, compareAsc, compareDesc, setMonth, setYear, subYears, addYears } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { supabase } from './supabaseClient';
 import { Session } from '@supabase/supabase-js';
 
 type ViewMode = 'monthly' | 'annual';
+type SortField = 'date' | 'description' | 'category' | 'amount';
+type SortOrder = 'asc' | 'desc';
+type CardFilter = 'all' | 'card' | 'no_card';
 
 const App: React.FC = () => {
   const [session, setSession] = useState<Session | null>(null);
@@ -32,6 +35,11 @@ const App: React.FC = () => {
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState<{ id: string, recurrenceType: string, type: string, groupId: string, description: string } | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // Estados de Ordenação e Filtro
+  const [sortBy, setSortBy] = useState<SortField>('date');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
+  const [cardFilter, setCardFilter] = useState<CardFilter>('all');
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -59,7 +67,8 @@ const App: React.FC = () => {
             billingDate: t.billing_date,
             recurrenceType: t.recurrence_type,
             installmentCurrent: t.installment_current,
-            installmentTotal: t.installment_total
+            installmentTotal: t.installment_total,
+            isCreditCard: t.is_credit_card
         })));
     }
     const { data: catData } = await supabase.from('categories').select('*');
@@ -78,16 +87,54 @@ const App: React.FC = () => {
     let result = transactions.filter(t => t.billingDate.startsWith(currentMonthKey));
 
     if (searchTerm.trim()) {
-        const term = searchTerm.toLowerCase();
+        const term = normalizeString(searchTerm);
         result = result.filter(t => 
-            t.description.toLowerCase().includes(term) || 
+            normalizeString(t.description).includes(term) || 
             t.amount.toString().includes(term) ||
-            t.category.toLowerCase().includes(term)
+            normalizeString(t.category).includes(term)
         );
     }
 
-    return result.sort((a, b) => compareAsc(parseISO(a.date), parseISO(b.date)));
-  }, [transactions, currentDate, currentMonthKey, searchTerm]);
+    if (cardFilter === 'card') {
+        result = result.filter(t => t.isCreditCard === true);
+    } else if (cardFilter === 'no_card') {
+        result = result.filter(t => t.isCreditCard !== true);
+    }
+
+    // Lógica de Ordenação
+    return result.sort((a, b) => {
+        let comparison = 0;
+        switch (sortBy) {
+            case 'date':
+                comparison = compareAsc(parseISO(a.date), parseISO(b.date));
+                break;
+            case 'description':
+                comparison = a.description.localeCompare(b.description, 'pt-BR');
+                break;
+            case 'category':
+                comparison = a.category.localeCompare(b.category, 'pt-BR');
+                break;
+            case 'amount':
+                comparison = a.amount - b.amount;
+                break;
+        }
+        return sortOrder === 'asc' ? comparison : -comparison;
+    });
+  }, [transactions, currentDate, currentMonthKey, searchTerm, sortBy, sortOrder, cardFilter]);
+
+  const handleSort = (field: SortField) => {
+      if (sortBy === field) {
+          setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+      } else {
+          setSortBy(field);
+          setSortOrder('asc');
+      }
+  };
+
+  const SortIcon = ({ field }: { field: SortField }) => {
+      if (sortBy !== field) return <ArrowUpDown size={14} className="text-gray-300 ml-1" />;
+      return sortOrder === 'asc' ? <ArrowUpNarrowWide size={14} className="text-blue-600 ml-1" /> : <ArrowDownWideNarrow size={14} className="text-blue-600 ml-1" />;
+  };
 
   const effectiveCategories = useMemo(() => {
     return categories.map(cat => {
@@ -106,7 +153,8 @@ const App: React.FC = () => {
         type: t.type, category: t.category, date: t.date, billing_date: t.billingDate, 
         recurrence_type: t.recurrenceType,
         installment_current: t.installmentCurrent, 
-        installment_total: t.installmentTotal
+        installment_total: t.installmentTotal,
+        is_credit_card: t.isCreditCard
     });
     if (mode === 'create') {
         await supabase.from('transactions').insert(newTransactions.map(toDbFormat));
@@ -154,7 +202,7 @@ const App: React.FC = () => {
         await supabase.from('categories').update({ name, budget }).eq('id', id);
         await supabase.from('monthly_budgets').delete().eq('category_id', id).eq('month_year', currentMonthKey);
       } else {
-        await supabase.from('monthly_budgets').upsert({ category_id: id, month_year: currentMonthKey, amount: budget, user_id: session.user.id }, { onConflict: 'category_id, month_year' });
+        await supabase.from('monthly_budgets').upsert({ category_id: id, name, month_year: currentMonthKey, amount: budget, user_id: session.user.id }, { onConflict: 'category_id, month_year' });
       }
       fetchData();
   };
@@ -245,25 +293,48 @@ const App: React.FC = () => {
                              <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full font-bold">{filteredTransactions.length}</span>
                         </div>
                         
-                        <div className="relative flex-1 max-w-md">
-                            <div className="absolute left-3 top-2.5 text-gray-400">
-                                <Search size={18} />
+                        <div className="flex flex-col md:flex-row gap-3 flex-1 max-w-2xl">
+                            <div className="relative flex-1">
+                                <div className="absolute left-3 top-2.5 text-gray-400">
+                                    <Search size={18} />
+                                </div>
+                                <input 
+                                    type="text" 
+                                    placeholder="BUSCAR NESTA LISTA..." 
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="w-full pl-10 pr-10 py-2 bg-white border border-gray-300 rounded-lg text-xs font-bold uppercase focus:ring-2 focus:ring-blue-500 outline-none"
+                                />
+                                {searchTerm && (
+                                    <button 
+                                        onClick={() => setSearchTerm('')}
+                                        className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
+                                    >
+                                        <X size={18} />
+                                    </button>
+                                )}
                             </div>
-                            <input 
-                                type="text" 
-                                placeholder="BUSCAR NESTA LISTA..." 
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="w-full pl-10 pr-10 py-2 bg-white border border-gray-300 rounded-lg text-xs font-bold uppercase focus:ring-2 focus:ring-blue-500 outline-none"
-                            />
-                            {searchTerm && (
+
+                            <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-gray-300">
                                 <button 
-                                    onClick={() => setSearchTerm('')}
-                                    className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
+                                    onClick={() => setCardFilter('all')} 
+                                    className={`px-3 py-1.5 rounded text-[10px] font-bold uppercase transition-colors ${cardFilter === 'all' ? 'bg-blue-100 text-blue-700 border border-blue-200' : 'text-gray-500 hover:bg-gray-50 border border-transparent'}`}
                                 >
-                                    <X size={18} />
+                                    Tudo
                                 </button>
-                            )}
+                                <button 
+                                    onClick={() => setCardFilter('card')} 
+                                    className={`px-3 py-1.5 rounded text-[10px] font-bold uppercase transition-colors flex items-center gap-1 ${cardFilter === 'card' ? 'bg-blue-600 text-white border border-blue-700' : 'text-gray-500 hover:bg-gray-50 border border-transparent'}`}
+                                >
+                                    <CreditCard size={12} /> Cartão
+                                </button>
+                                <button 
+                                    onClick={() => setCardFilter('no_card')} 
+                                    className={`px-3 py-1.5 rounded text-[10px] font-bold uppercase transition-colors ${cardFilter === 'no_card' ? 'bg-orange-100 text-orange-700 border border-orange-200' : 'text-gray-500 hover:bg-gray-50 border border-transparent'}`}
+                                >
+                                    Dinheiro
+                                </button>
+                            </div>
                         </div>
                     </div>
                 
@@ -273,7 +344,10 @@ const App: React.FC = () => {
                                 <li key={t.id} className="p-4 flex flex-col gap-2">
                                     <div className="flex justify-between items-start">
                                         <div className="flex-1">
-                                            <h3 className="font-bold text-gray-800 uppercase text-sm mb-1">{t.description}</h3>
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <h3 className="font-bold text-gray-800 uppercase text-sm">{t.description}</h3>
+                                                {t.isCreditCard && <CreditCard size={14} className="text-blue-600" />}
+                                            </div>
                                             <div className="flex flex-wrap gap-2 items-center mb-1">
                                                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase ${getCategoryColor(t.category)}`}>
                                                     {t.category}
@@ -305,12 +379,20 @@ const App: React.FC = () => {
                     <div className="hidden md:block overflow-x-auto">
                         <table className="w-full text-left border-collapse">
                         <thead>
-                            <tr className="bg-gray-50 text-gray-500 text-xs border-b uppercase font-bold">
-                            <th className="p-4">Data</th>
-                            <th className="p-4">Descrição</th>
-                            <th className="p-4">Categoria</th>
-                            <th className="p-4 text-right">Valor</th>
-                            <th className="p-4 text-center">Ações</th>
+                            <tr className="bg-gray-50 text-gray-500 text-[10px] border-b uppercase font-bold">
+                                <th onClick={() => handleSort('date')} className="p-4 cursor-pointer hover:bg-gray-100 transition-colors">
+                                    <div className="flex items-center">Data <SortIcon field="date" /></div>
+                                </th>
+                                <th onClick={() => handleSort('description')} className="p-4 cursor-pointer hover:bg-gray-100 transition-colors">
+                                    <div className="flex items-center">Descrição <SortIcon field="description" /></div>
+                                </th>
+                                <th onClick={() => handleSort('category')} className="p-4 cursor-pointer hover:bg-gray-100 transition-colors">
+                                    <div className="flex items-center">Categoria <SortIcon field="category" /></div>
+                                </th>
+                                <th onClick={() => handleSort('amount')} className="p-4 text-right cursor-pointer hover:bg-gray-100 transition-colors">
+                                    <div className="flex items-center justify-end">Valor <SortIcon field="amount" /></div>
+                                </th>
+                                <th className="p-4 text-center">Ações</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
@@ -319,13 +401,19 @@ const App: React.FC = () => {
                                 <td className="p-4 text-sm text-gray-600">{formatDate(t.date)}</td>
                                 <td className="p-4 font-bold text-gray-800 uppercase text-sm">
                                     <div className="flex flex-col">
-                                        {t.description}
+                                        <div className="flex items-center gap-2">
+                                            {t.description}
+                                            {t.isCreditCard && <CreditCard size={14} className="text-blue-600" title="Cartão de Crédito" />}
+                                        </div>
                                         {t.type === 'payroll_deduction' && <span className="text-[9px] text-indigo-500 font-bold">DESCONTO EM FOLHA</span>}
                                     </div>
                                 </td>
                                 <td className="p-4"><span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-bold uppercase ${getCategoryColor(t.category)}`}>{t.category}</span></td>
                                 <td className={`p-4 font-bold text-right ${t.type === 'income' ? 'text-green-600' : t.type === 'expense' ? 'text-red-600' : 'text-indigo-600'}`}>
-                                    {t.type === 'expense' || t.type === 'payroll_deduction' ? '- ' : '+ '}{formatCurrency(t.amount)}
+                                    <div className="flex items-center justify-end gap-2">
+                                        {t.isCreditCard && <CreditCard size={12} className="text-gray-300" />}
+                                        <span>{t.type === 'expense' || t.type === 'payroll_deduction' ? '- ' : '+ '}{formatCurrency(t.amount)}</span>
+                                    </div>
                                 </td>
                                 <td className="p-4 text-center">
                                     <div className="flex justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -350,7 +438,16 @@ const App: React.FC = () => {
 
       <button onClick={() => { setEditingTransaction(null); setIsFormOpen(true); }} className="fixed bottom-6 right-6 bg-blue-800 text-white w-14 h-14 rounded-full shadow-xl hover:scale-105 transition-all z-40 flex items-center justify-center"><Plus size={28} /></button>
 
-      <TransactionForm isOpen={isFormOpen} onClose={() => setIsFormOpen(false)} onSave={handleSaveTransaction} initialData={editingTransaction} categories={categories} establishments={establishments} onAddCategory={addCategory} onAddEstablishment={addEstablishment} />
+      <TransactionForm 
+        isOpen={isFormOpen} 
+        onClose={() => setIsFormOpen(false)} 
+        onSave={handleSaveTransaction} 
+        initialData={editingTransaction} 
+        categories={categories} 
+        establishments={establishments} 
+        onAddCategory={addCategory} 
+        onAddEstablishment={addEstablishment} 
+      />
       {isSettingsOpen && <Settings categories={effectiveCategories} establishments={establishments} onClose={() => setIsSettingsOpen(false)} onAddCategory={addCategory} onUpdateCategory={updateCategory} onDeleteCategory={deleteCategory} onAddEstablishment={addEstablishment} onUpdateEstablishment={updateEstablishment} onDeleteEstablishment={deleteEstablishment} currentMonthName={currentMonthName} />}
       
       <GlobalSearch 
