@@ -36,20 +36,19 @@ const AnnualComparison: React.FC<AnnualComparisonProps> = ({
         // 1. Receita Bruta (Income + Payroll Deduction)
         const income = monthTransactions
             .filter(t => t.type === 'income')
-            .reduce((acc, t) => acc + t.amount, 0);
+            .reduce((acc, t) => normalizeCurrency(acc + t.amount), 0);
         
         const payrollDeductions = monthTransactions
             .filter(t => t.type === 'payroll_deduction')
-            .reduce((acc, t) => acc + t.amount, 0);
+            .reduce((acc, t) => normalizeCurrency(acc + t.amount), 0);
 
         const grossIncome = normalizeCurrency(income + payrollDeductions);
 
         // 2. Cálculo do Compromissado (Max entre Meta e Gasto Real por categoria)
-        // Mapear gastos reais do mês
         const expensesMap = monthTransactions
             .filter(t => t.type === 'expense' || t.type === 'payroll_deduction')
             .reduce((acc, t) => {
-                acc[t.category] = (acc[t.category] || 0) + t.amount;
+                acc[t.category] = normalizeCurrency((acc[t.category] || 0) + t.amount);
                 return acc;
             }, {} as Record<string, number>);
 
@@ -57,42 +56,36 @@ const AnnualComparison: React.FC<AnnualComparisonProps> = ({
         const processedCategories = new Set<string>();
 
         categories.forEach(cat => {
-            // Achar orçamento específico para este mês/categoria
             const specificMB = monthlyBudgets.find(mb => mb.category_id === cat.id && mb.month_year === key);
-            const budget = specificMB ? specificMB.amount : (cat.budget || 0);
+            const budget = normalizeCurrency(specificMB ? specificMB.amount : (cat.budget || 0));
+            const actual = normalizeCurrency(expensesMap[cat.name] || 0);
             
-            const actual = expensesMap[cat.name] || 0;
-            committedExpense += Math.max(budget, actual);
+            committedExpense = normalizeCurrency(committedExpense + Math.max(budget, actual));
             processedCategories.add(cat.name);
         });
 
-        // Adicionar gastos de categorias que não estão na lista oficial (se houver)
         Object.keys(expensesMap).forEach(catName => {
             if (!processedCategories.has(catName)) {
-                committedExpense += expensesMap[catName];
+                committedExpense = normalizeCurrency(committedExpense + expensesMap[catName]);
             }
         });
-
-        const normCommitted = normalizeCurrency(committedExpense);
 
         months.push({
             name: monthName,
             grossIncome,
-            committedExpense: normCommitted,
-            balance: normalizeCurrency(grossIncome - normCommitted)
+            committedExpense: normalizeCurrency(committedExpense),
+            balance: normalizeCurrency(grossIncome - committedExpense)
         });
     }
     return months;
   }, [transactions, currentYear, categories, monthlyBudgets]);
 
-  // Totals for the summary cards
   const totalAnnualIncome = normalizeCurrency(annualData.reduce((acc, m) => acc + m.grossIncome, 0));
   const totalAnnualCommitted = normalizeCurrency(annualData.reduce((acc, m) => acc + m.committedExpense, 0));
   const totalAnnualBalance = normalizeCurrency(annualData.reduce((acc, m) => acc + m.balance, 0));
 
   return (
     <div className="space-y-6">
-        {/* Annual Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
                 <div>
@@ -127,21 +120,14 @@ const AnnualComparison: React.FC<AnnualComparisonProps> = ({
             </div>
         </div>
 
-        {/* Annual Comparison Table */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="p-4 border-b bg-gray-50 flex justify-between items-center">
                 <h2 className="text-lg font-bold text-gray-800 uppercase">Detalhamento por Mês - {format(currentYear, 'yyyy')}</h2>
                 <div className="flex gap-2 items-center">
-                    <button 
-                        onClick={onExportExcel}
-                        className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-green-700 bg-white hover:bg-green-50 rounded border border-green-200 transition-colors uppercase"
-                    >
+                    <button onClick={onExportExcel} className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-green-700 bg-white hover:bg-green-50 rounded border border-green-200 transition-colors uppercase">
                         <FileSpreadsheet size={16} /> Excel
                     </button>
-                    <button 
-                        onClick={onExportPDF}
-                        className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-red-700 bg-white hover:bg-red-50 rounded border border-red-200 transition-colors uppercase"
-                    >
+                    <button onClick={onExportPDF} className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-red-700 bg-white hover:bg-red-50 rounded border border-red-200 transition-colors uppercase">
                         <FileText size={16} /> PDF
                     </button>
                 </div>
@@ -167,7 +153,6 @@ const AnnualComparison: React.FC<AnnualComparisonProps> = ({
                                 </td>
                             </tr>
                         ))}
-                        {/* Final Summary Row */}
                         <tr className="bg-gray-50 border-t-2 border-gray-200">
                             <td className="p-4 font-black uppercase text-xs text-gray-900">TOTAIS DO ANO</td>
                             <td className="p-4 text-right text-green-700 font-black text-base">{formatCurrency(totalAnnualIncome)}</td>

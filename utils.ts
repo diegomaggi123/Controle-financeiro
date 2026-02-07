@@ -8,9 +8,12 @@ import { Transaction } from './types';
 
 export const generateId = (): string => uuidv4();
 
-// Função crucial para evitar erros como 0.1 + 0.2 = 0.30000000004
+/**
+ * Normaliza valores monetários para evitar erros de precisão decimal do JavaScript.
+ * Sempre arredonda para 2 casas decimais.
+ */
 export const normalizeCurrency = (value: number): number => {
-  return Math.round(value * 100) / 100;
+  return Math.round((value + Number.EPSILON) * 100) / 100;
 };
 
 export const formatCurrency = (value: number): string => {
@@ -26,7 +29,6 @@ export const formatCurrency = (value: number): string => {
 export const parseLocal = (dateStr: string): Date => {
     const cleanDate = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
     const [year, month, day] = cleanDate.split('-').map(Number);
-    // Usamos meio-dia (12:00) para garantir que mesmo com shifts leves de fuso o dia não mude
     return new Date(year, month - 1, day, 12, 0, 0);
 };
 

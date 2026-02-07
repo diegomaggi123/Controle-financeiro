@@ -10,52 +10,55 @@ interface SummaryCardsProps {
 
 const SummaryCards: React.FC<SummaryCardsProps> = ({ transactions, categories }) => {
   const summary = useMemo(() => {
-    // 1. Calcular Receitas Reais + Descontos em Folha
+    // 1. Calcular Receitas Reais + Descontos em Folha (Receita Bruta)
     const incomes = transactions
       .filter(t => t.type === 'income')
-      .reduce((sum, t) => sum + t.amount, 0);
+      .reduce((sum, t) => normalizeCurrency(sum + t.amount), 0);
 
     const payrollDeductions = transactions
       .filter(t => t.type === 'payroll_deduction')
-      .reduce((sum, t) => sum + t.amount, 0);
+      .reduce((sum, t) => normalizeCurrency(sum + t.amount), 0);
 
-    const grossIncome = incomes + payrollDeductions;
+    const grossIncome = normalizeCurrency(incomes + payrollDeductions);
 
-    // 2. Calcular Total apenas em Cartão de Crédito
+    // 2. Calcular Total apenas em Cartão de Crédito para visualização
     const creditCardTotal = transactions
       .filter(t => t.type === 'expense' && t.isCreditCard === true)
-      .reduce((sum, t) => sum + t.amount, 0);
+      .reduce((sum, t) => normalizeCurrency(sum + t.amount), 0);
 
-    // 3. Mapear gastos reais por categoria
+    // 3. Mapear gastos reais por categoria (incluindo descontos em folha)
     const expensesMap = transactions
       .filter(t => t.type === 'expense' || t.type === 'payroll_deduction')
       .reduce((acc, t) => {
-        acc[t.category] = (acc[t.category] || 0) + t.amount;
+        acc[t.category] = normalizeCurrency((acc[t.category] || 0) + t.amount);
         return acc;
       }, {} as Record<string, number>);
 
-    // 4. Calcular Despesa Comprometida (Maior entre Gasto Real e Meta)
+    // 4. ALGORITMO DE COMPROMETIMENTO (REGRA DE NEGÓCIO CRUCIAL)
+    // O comprometimento é a soma do maior valor entre (Meta) e (Gasto Real) para cada categoria.
     let committedExpense = 0;
     const processedCategories = new Set<string>();
 
     categories.forEach(cat => {
-      const budget = cat.budget || 0;
-      const actual = expensesMap[cat.name] || 0;
-      committedExpense += Math.max(budget, actual);
+      const budget = normalizeCurrency(cat.budget || 0);
+      const actual = normalizeCurrency(expensesMap[cat.name] || 0);
+      // Se gastou mais que a meta, conta o gasto. Se gastou menos, conta a meta (reserva).
+      committedExpense = normalizeCurrency(committedExpense + Math.max(budget, actual));
       processedCategories.add(cat.name);
     });
 
+    // Adicionar categorias "avulsas" que não estão no cadastro oficial mas têm lançamentos
     Object.keys(expensesMap).forEach(catName => {
       if (!processedCategories.has(catName)) {
-        committedExpense += expensesMap[catName];
+        committedExpense = normalizeCurrency(committedExpense + expensesMap[catName]);
       }
     });
 
     return { 
-        income: normalizeCurrency(grossIncome), 
-        expense: normalizeCurrency(committedExpense),
-        totalDeductions: normalizeCurrency(payrollDeductions),
-        creditCardTotal: normalizeCurrency(creditCardTotal)
+        income: grossIncome, 
+        expense: committedExpense,
+        totalDeductions: payrollDeductions,
+        creditCardTotal: creditCardTotal
     };
   }, [transactions, categories]);
 
