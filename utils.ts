@@ -20,11 +20,24 @@ export const formatCurrency = (value: number): string => {
   }).format(normalizeCurrency(value));
 };
 
+/**
+ * Converte string YYYY-MM-DD para Date local ao meio-dia para evitar shifts de fuso horário
+ */
+export const parseLocal = (dateStr: string): Date => {
+    const cleanDate = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
+    const [year, month, day] = cleanDate.split('-').map(Number);
+    // Usamos meio-dia (12:00) para garantir que mesmo com shifts leves de fuso o dia não mude
+    return new Date(year, month - 1, day, 12, 0, 0);
+};
+
 export const formatDate = (dateStr: string): string => {
   if (!dateStr) return '';
-  const date = parseISO(dateStr);
-  if (!isValid(date)) return '';
-  return format(date, 'dd/MM/yyyy', { locale: ptBR });
+  try {
+    const date = parseLocal(dateStr);
+    return format(date, 'dd/MM/yyyy', { locale: ptBR });
+  } catch (e) {
+    return '';
+  }
 };
 
 export const formatDateForInput = (dateStr: string): string => {
@@ -41,8 +54,8 @@ export const normalizeString = (str: string): string => {
 };
 
 export const addMonthsToDate = (dateStr: string, months: number): string => {
-  const date = parseISO(dateStr);
-  return addMonths(date, months).toISOString();
+  const date = parseLocal(dateStr);
+  return format(addMonths(date, months), 'yyyy-MM-dd');
 };
 
 export const getCategoryColor = (categoryName: string): string => {

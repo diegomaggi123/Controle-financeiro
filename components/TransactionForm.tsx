@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Transaction, RecurrenceType, TransactionType, CategoryData, EstablishmentData } from '../types';
-import { generateId, addMonthsToDate, formatDateForInput, formatCurrency, normalizeCurrency, normalizeString } from '../utils';
+import { generateId, addMonthsToDate, formatDateForInput, formatCurrency, normalizeCurrency, normalizeString, parseLocal } from '../utils';
 import { X, Plus, Trash2, ArrowLeft, Info, Sparkles, CreditCard } from 'lucide-react';
-import { format, addMonths, addWeeks, parseISO } from 'date-fns';
+import { format, addMonths, addWeeks } from 'date-fns';
 
 interface TransactionFormProps {
   isOpen: boolean;
@@ -62,7 +62,8 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>('single');
   const [frequency, setFrequency] = useState<'monthly' | 'biweekly' | 'weekly'>('monthly');
   const [installments, setInstallments] = useState('2'); 
-  const [startNextMonth, setStartNextMonth] = useState(false);
+  // Alterado para true por padrão conforme solicitado pelo usuário
+  const [startNextMonth, setStartNextMonth] = useState(true);
   const [isCreditCard, setIsCreditCard] = useState(true);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [showAddCategory, setShowAddCategory] = useState(false);
@@ -85,8 +86,9 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
         setInstallments(initialData.installmentTotal?.toString() || '2');
       }
 
-      const pDate = parseISO(initialData.date);
-      const bDate = parseISO(initialData.billingDate);
+      // Cálculo estável de mês seguinte baseado na transação existente
+      const pDate = parseLocal(initialData.date);
+      const bDate = parseLocal(initialData.billingDate);
       const isNextMonth = bDate.getMonth() !== pDate.getMonth() || bDate.getFullYear() !== pDate.getFullYear();
       setStartNextMonth(isNextMonth);
     } else if (isOpen) {
@@ -103,7 +105,8 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     setRecurrenceType('single');
     setFrequency('monthly');
     setInstallments('2');
-    setStartNextMonth(false);
+    // Garante que novos lançamentos comecem marcados para o próximo mês
+    setStartNextMonth(true);
     setIsCreditCard(true);
     setNewCategoryName('');
     setShowAddCategory(false);
@@ -174,7 +177,8 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     const transactionsToSave: Transaction[] = [];
     const baseGroupId = initialData ? initialData.groupId : generateId();
     
-    const purchaseDate = parseISO(date);
+    // Usar parser estável para evitar shifts de fuso horário
+    const purchaseDate = parseLocal(date);
     const startBillingDate = startNextMonth ? addMonths(purchaseDate, 1) : purchaseDate;
     
     const parsedAmount = normalizeCurrency(getNumericAmount());
@@ -194,38 +198,31 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
             amount: parsedAmount,
             type,
             category,
-            date: date, 
-            billingDate: startBillingDate.toISOString(),
+            date: date, // Mantém a string original do input (YYYY-MM-DD)
+            billingDate: format(startBillingDate, 'yyyy-MM-dd'),
             recurrenceType: 'single',
             isCreditCard: type === 'expense' ? isCreditCard : false
         });
     } else {
-        // Tipos Recorrentes (Parcelado, Repetir, Fixo)
         const totalItems = (recurrenceType === 'installment' || recurrenceType === 'repeat') 
             ? parseInt(installments) 
             : 24;
             
-        // Se estamos editando "futuros", começamos da parcela atual. Se for novo, começamos da 1.
         const startInstallmentNum = (initialData && scope === 'future' && (recurrenceType === 'installment' || recurrenceType === 'repeat'))
             ? (initialData.installmentCurrent || 1)
             : 1;
             
-        // Número de iterações baseado no escopo
         const loopLimit = scope === 'single' ? 1 : (totalItems - startInstallmentNum + 1);
 
         for (let i = 0; i < loopLimit; i++) {
              const currentInstallmentNum = startInstallmentNum + i;
-             // O offset da data é baseado no 'i' (índice da iteração atual)
              const billDate = getNextDate(startBillingDate, i, frequency);
              const curDate = getNextDate(purchaseDate, i, frequency);
              
-             // Na edição "single", mantém o ID original. Na criação ou "future", gera novos IDs (os futuros serão recriados pelo App.tsx)
              const id = (initialData && scope === 'single' && i === 0) ? initialData.id : generateId();
-
              let finalAmount = parsedAmount;
              
-             // CORREÇÃO CRUCIAL: Só divide o valor se estiver CRIANDO um novo parcelamento.
-             // Se estiver EDITANDO, o parsedAmount já é o valor da parcela individual.
+             // Só divide o valor se estiver CRIANDO um novo parcelamento.
              if (recurrenceType === 'installment' && !initialData) {
                  const baseVal = Math.floor((parsedAmount / totalItems) * 100) / 100;
                  const remainder = normalizeCurrency(parsedAmount - (baseVal * totalItems));
@@ -239,8 +236,8 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                  amount: finalAmount,
                  type,
                  category,
-                 date: curDate.toISOString(), 
-                 billingDate: billDate.toISOString(),
+                 date: format(curDate, 'yyyy-MM-dd'), 
+                 billingDate: format(billDate, 'yyyy-MM-dd'),
                  recurrenceType: recurrenceType,
                  installmentCurrent: (recurrenceType !== 'fixed') ? currentInstallmentNum : undefined,
                  installmentTotal: (recurrenceType !== 'fixed') ? totalItems : undefined,

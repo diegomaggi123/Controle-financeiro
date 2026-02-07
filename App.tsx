@@ -1,6 +1,7 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { Transaction, CategoryData, EstablishmentData, MonthlyBudget } from './types';
-import { generateId, formatCurrency, formatDate, getMonthYearKey, getCategoryColor, exportToExcel, exportToPDF, normalizeString } from './utils';
+import { generateId, formatCurrency, formatDate, getMonthYearKey, getCategoryColor, exportToExcel, exportToPDF, normalizeString, parseLocal } from './utils';
 import TransactionForm from './components/TransactionForm';
 import Dashboard from './components/Dashboard';
 import Settings from './components/Settings';
@@ -10,7 +11,7 @@ import BudgetProgress from './components/BudgetProgress';
 import Auth from './components/Auth';
 import GlobalSearch from './components/GlobalSearch';
 import { Plus, ChevronLeft, ChevronRight, Edit2, Trash2, Settings as SettingsIcon, Calendar, Repeat, Tag, BarChart3, List, LogOut, FileSpreadsheet, FileText, MoreVertical, AlertTriangle, Info, Search, X, History, ArrowUpDown, ArrowUpNarrowWide, ArrowDownWideNarrow, CreditCard } from 'lucide-react';
-import { format, subMonths, addMonths, parseISO, compareAsc, compareDesc, setMonth, setYear, subYears, addYears } from 'date-fns';
+import { format, subMonths, addMonths, compareAsc, setMonth, setYear, subYears, addYears } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { supabase } from './supabaseClient';
 import { Session } from '@supabase/supabase-js';
@@ -106,7 +107,7 @@ const App: React.FC = () => {
         let comparison = 0;
         switch (sortBy) {
             case 'date':
-                comparison = compareAsc(parseISO(a.date), parseISO(b.date));
+                comparison = compareAsc(parseLocal(a.date), parseLocal(b.date));
                 break;
             case 'description':
                 comparison = a.description.localeCompare(b.description, 'pt-BR');
@@ -154,6 +155,7 @@ const App: React.FC = () => {
         recurrence_type: t.recurrenceType,
         installment_current: t.installmentCurrent, 
         installment_total: t.installmentTotal,
+        // Fix: Changed t.is_credit_card to t.isCreditCard to match Transaction interface
         is_credit_card: t.isCreditCard
     });
     if (mode === 'create') {
