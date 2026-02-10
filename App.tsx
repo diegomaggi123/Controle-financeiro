@@ -28,7 +28,10 @@ const App: React.FC = () => {
   const [categories, setCategories] = useState<CategoryData[]>([]);
   const [monthlyBudgets, setMonthlyBudgets] = useState<MonthlyBudget[]>([]);
   const [establishments, setEstablishments] = useState<EstablishmentData[]>([]);
-  const [currentDate, setCurrentDate] = useState(new Date());
+  
+  // Alterado para iniciar no MÊS SEGUINTE por padrão
+  const [currentDate, setCurrentDate] = useState(addMonths(new Date(), 1));
+  
   const [viewMode, setViewMode] = useState<ViewMode>('monthly');
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -155,7 +158,6 @@ const App: React.FC = () => {
         recurrence_type: t.recurrenceType,
         installment_current: t.installmentCurrent, 
         installment_total: t.installmentTotal,
-        // Fix: Changed t.is_credit_card to t.isCreditCard to match Transaction interface
         is_credit_card: t.isCreditCard
     });
     if (mode === 'create') {
@@ -411,7 +413,7 @@ const App: React.FC = () => {
                                     </div>
                                 </td>
                                 <td className="p-4"><span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-bold uppercase ${getCategoryColor(t.category)}`}>{t.category}</span></td>
-                                <td className={`p-4 font-bold text-right ${t.type === 'income' ? 'text-green-600' : t.type === 'expense' ? 'text-red-600' : 'text-indigo-600'}`}>
+                                <td className={`p-4 font-bold text-right ${t.type === 'income' ? 'text-green-600' : t.type === 'expense' ? 'text-red-600' : t.type === 'indigo-600'}`}>
                                     <div className="flex items-center justify-end gap-2">
                                         {t.isCreditCard && <CreditCard size={12} className="text-gray-300" />}
                                         <span>{t.type === 'expense' || t.type === 'payroll_deduction' ? '- ' : '+ '}{formatCurrency(t.amount)}</span>
