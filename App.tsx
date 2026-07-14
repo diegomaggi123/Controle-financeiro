@@ -61,24 +61,52 @@ const App: React.FC = () => {
     try {
       console.log(`[fetchData #${fetchId}] Iniciando busca de dados para o usuário: ${activeSession.user.id}`);
       
-      const { data: transData, error: transError } = await supabase
-        .from('transactions')
-        .select('*')
-        .eq('user_id', activeSession.user.id)
-        .order('date', { ascending: true }); // Ordenação determinística por data de compra
-        
-      if (fetchId !== fetchCounterRef.current) {
-        console.warn(`[fetchData #${fetchId}] Cancelado: Uma nova busca de dados foi iniciada.`);
-        return;
+      let transData: any[] = [];
+      let from = 0;
+      const PAGE_SIZE = 1000;
+      let hasMore = true;
+      let loopCount = 0;
+      let transError: any = null;
+
+      while (hasMore) {
+        const { data, error } = await supabase
+          .from('transactions')
+          .select('*')
+          .eq('user_id', activeSession.user.id)
+          .order('date', { ascending: true })
+          .range(from, from + PAGE_SIZE - 1);
+
+        if (fetchId !== fetchCounterRef.current) {
+          console.warn(`[fetchData #${fetchId}] Cancelado: Uma nova busca de dados foi iniciada.`);
+          return;
+        }
+
+        if (error) {
+          transError = error;
+          break;
+        }
+
+        if (data && data.length > 0) {
+          transData = [...transData, ...data];
+          console.log(`[fetchData #${fetchId}] Bloco ${loopCount + 1} de transações carregado. Registros neste bloco: ${data.length}. Total acumulado: ${transData.length}`);
+          if (data.length < PAGE_SIZE) {
+            hasMore = false;
+          } else {
+            from += PAGE_SIZE;
+            loopCount++;
+          }
+        } else {
+          hasMore = false;
+        }
       }
-      
+
       if (transError) {
         console.error(`[fetchData #${fetchId}] Erro ao carregar transações do Supabase:`, transError);
         setDbError(`Erro ao carregar transações: ${transError.message}`);
-      } else if (transData) {
+      } else {
         console.log(`[fetchData #${fetchId}] CARREGAMENTO BEM-SUCEDIDO!`);
-        console.log(`[fetchData #${fetchId}] Quantidade recebida do Supabase:`, transData.length);
-        console.table(transData.map(t => ({
+        console.log(`[fetchData #${fetchId}] Quantidade total recebida do Supabase:`, transData.length);
+        console.table(transData.map((t: any) => ({
           id: t.id,
           description: t.description,
           amount: t.amount,

@@ -68,25 +68,41 @@ async function run() {
   let monthlyBudgets = [];
 
   try {
-    // 1. Buscar transações do Supabase REST API usando a Service Role Key (Bypassa RLS com segurança no backend)
-    const supabaseEndpoint = `${SUPABASE_URL}/rest/v1/transactions?select=*`;
-    const supabaseOptions = {
-      method: 'GET',
-      headers: {
-        'apikey': SUPABASE_SERVICE_ROLE_KEY,
-        'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-        'Range': '0-9999'
-      }
-    };
+    // 1. Buscar transações do Supabase REST API usando a Service Role Key com Paginação Automática
+    let hasMore = true;
+    let fromIndex = 0;
+    const PAGE_SIZE = 1000;
+    let loopCount = 0;
 
-    const response = await makeRequest(supabaseEndpoint, supabaseOptions);
-    console.log(`[REST API] Código de Status HTTP: ${response.statusCode}`);
-    
-    if (Array.isArray(response.data)) {
-      transactions = response.data;
-      console.log(`[REST API] Sucesso! Quantidade de transações retornadas: ${transactions.length}`);
-    } else {
-      console.log(`[REST API] Resposta não é um array. Corpo retornado: ${JSON.stringify(response.data)}`);
+    while (hasMore) {
+      const toIndex = fromIndex + PAGE_SIZE - 1;
+      const supabaseEndpoint = `${SUPABASE_URL}/rest/v1/transactions?select=*&order=date.asc`;
+      const supabaseOptions = {
+        method: 'GET',
+        headers: {
+          'apikey': SUPABASE_SERVICE_ROLE_KEY,
+          'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          'Range': `${fromIndex}-${toIndex}`
+        }
+      };
+
+      const response = await makeRequest(supabaseEndpoint, supabaseOptions);
+      
+      if (Array.isArray(response.data)) {
+        const count = response.data.length;
+        transactions = transactions.concat(response.data);
+        console.log(`[REST API] Bloco ${loopCount + 1} de transações carregado. Range: ${fromIndex}-${toIndex}. Registros neste bloco: ${count}. Total acumulado: ${transactions.length}`);
+        
+        if (count < PAGE_SIZE) {
+          hasMore = false;
+        } else {
+          fromIndex += PAGE_SIZE;
+          loopCount++;
+        }
+      } else {
+        console.log(`[REST API] Resposta não é um array no bloco ${loopCount + 1}. Corpo retornado: ${JSON.stringify(response.data)}`);
+        hasMore = false;
+      }
     }
 
     if (transactions.length === 0) {
