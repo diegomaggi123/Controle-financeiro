@@ -470,10 +470,39 @@ const App: React.FC = () => {
                 <BudgetProgress transactions={filteredTransactions} categories={effectiveCategories} onUpdateCategory={updateCategory} currentMonthName={currentMonthName} />
 
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                    <div className="p-4 border-b flex flex-col md:flex-row gap-4 md:items-center justify-between bg-gray-50">
-                        <div className="flex items-center gap-2">
-                             <h2 className="text-lg font-bold text-gray-800 uppercase">Lançamentos</h2>
-                             <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full font-bold">{filteredTransactions.length}</span>
+                    <div className="p-4 border-b flex flex-col lg:flex-row gap-4 lg:items-center justify-between bg-gray-50">
+                        <div className="flex flex-wrap items-center justify-between md:justify-start gap-3">
+                            <div className="flex items-center gap-2">
+                                 <h2 className="text-lg font-bold text-gray-800 uppercase">Lançamentos</h2>
+                                 <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full font-bold">{filteredTransactions.length}</span>
+                            </div>
+                            
+                            <div className="flex items-center gap-1.5">
+                                <button 
+                                    onClick={() => exportToExcel(filteredTransactions, `gastos_${currentMonthKey}`)}
+                                    className="flex items-center gap-1 bg-green-600 hover:bg-green-700 text-white text-[10px] font-extrabold uppercase px-2.5 py-1.5 rounded-lg transition-colors shadow-sm"
+                                    title="Exportar lançamentos deste mês para Excel"
+                                >
+                                    <FileSpreadsheet size={13} />
+                                    <span>Excel Mês</span>
+                                </button>
+                                <button 
+                                    onClick={() => exportToExcel(transactions, 'todos_os_gastos')}
+                                    className="flex items-center gap-1 bg-emerald-700 hover:bg-emerald-800 text-white text-[10px] font-extrabold uppercase px-2.5 py-1.5 rounded-lg transition-colors shadow-sm"
+                                    title="Exportar todo o histórico para Excel"
+                                >
+                                    <FileSpreadsheet size={13} />
+                                    <span>Excel Tudo</span>
+                                </button>
+                                <button 
+                                    onClick={() => exportToPDF(filteredTransactions, `Relatorio_Diego_${currentMonthKey}`)}
+                                    className="flex items-center gap-1 bg-red-600 hover:bg-red-700 text-white text-[10px] font-extrabold uppercase px-2.5 py-1.5 rounded-lg transition-colors shadow-sm"
+                                    title="Exportar lançamentos deste mês para PDF"
+                                >
+                                    <FileText size={13} />
+                                    <span>PDF Mês</span>
+                                </button>
+                            </div>
                         </div>
                         
                         <div className="flex flex-col md:flex-row gap-3 flex-1 max-w-2xl">
