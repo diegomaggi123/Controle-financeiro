@@ -279,10 +279,10 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
             <label className="block text-xs font-bold text-gray-500 mb-2 uppercase tracking-wider">Tipo</label>
             <div className="flex flex-col gap-2">
                 <div className="flex gap-2 p-1 bg-gray-100 rounded-lg">
-                    <button onClick={() => setType('expense')} className={`flex-1 py-3 rounded-md font-bold transition-all uppercase text-xs ${type === 'expense' ? 'bg-red-500 text-white shadow-md' : 'text-gray-500 hover:bg-gray-200'}`}>Despesa</button>
-                    <button onClick={() => setType('income')} className={`flex-1 py-3 rounded-md font-bold transition-all uppercase text-xs ${type === 'income' ? 'bg-green-500 text-white shadow-md' : 'text-gray-500 hover:bg-gray-200'}`}>Receita</button>
+                    <button type="button" onClick={() => { setType('expense'); setIsCreditCard(true); setStartNextMonth(true); }} className={`flex-1 py-3 rounded-md font-bold transition-all uppercase text-xs ${type === 'expense' ? 'bg-red-500 text-white shadow-md' : 'text-gray-500 hover:bg-gray-200'}`}>Despesa</button>
+                    <button type="button" onClick={() => { setType('income'); setIsCreditCard(false); setStartNextMonth(false); }} className={`flex-1 py-3 rounded-md font-bold transition-all uppercase text-xs ${type === 'income' ? 'bg-green-500 text-white shadow-md' : 'text-gray-500 hover:bg-gray-200'}`}>Receita</button>
                 </div>
-                <button onClick={() => { setType('payroll_deduction'); setCategory('DESCONTO EM FOLHA'); }} className={`w-full py-3 rounded-lg font-bold transition-all uppercase text-xs border-2 flex items-center justify-center gap-2 ${type === 'payroll_deduction' ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' : 'bg-white border-indigo-100 text-indigo-600 hover:bg-indigo-50'}`}>
+                <button type="button" onClick={() => { setType('payroll_deduction'); setCategory('DESCONTO EM FOLHA'); setIsCreditCard(false); setStartNextMonth(false); }} className={`w-full py-3 rounded-lg font-bold transition-all uppercase text-xs border-2 flex items-center justify-center gap-2 ${type === 'payroll_deduction' ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' : 'bg-white border-indigo-100 text-indigo-600 hover:bg-indigo-50'}`}>
                     <Info size={16} /> Desconto em Folha
                 </button>
             </div>
@@ -344,7 +344,11 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
           </div>
 
           {type === 'expense' && (
-            <div className={`p-4 rounded-xl border-2 transition-all flex items-center justify-between cursor-pointer ${isCreditCard ? 'bg-blue-50 border-blue-600' : 'bg-gray-50 border-gray-100'}`} onClick={() => setIsCreditCard(!isCreditCard)}>
+            <div className={`p-4 rounded-xl border-2 transition-all flex items-center justify-between cursor-pointer ${isCreditCard ? 'bg-blue-50 border-blue-600' : 'bg-gray-50 border-gray-100'}`} onClick={() => {
+                const nextVal = !isCreditCard;
+                setIsCreditCard(nextVal);
+                setStartNextMonth(nextVal);
+            }}>
                 <div className="flex items-center gap-3">
                     <div className={`p-2 rounded-lg ${isCreditCard ? 'bg-blue-600 text-white' : 'bg-gray-300 text-gray-500'}`}>
                         <CreditCard size={20} />

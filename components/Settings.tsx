@@ -14,6 +14,8 @@ interface SettingsProps {
   onAddEstablishment: (name: string) => void;
   onClose: () => void;
   currentMonthName?: string;
+  dbError?: string | null;
+  onClearDbError?: () => void;
 }
 
 const Settings: React.FC<SettingsProps> = ({
@@ -26,7 +28,9 @@ const Settings: React.FC<SettingsProps> = ({
   onAddCategory,
   onAddEstablishment,
   onClose,
-  currentMonthName = 'MÊS ATUAL'
+  currentMonthName = 'MÊS ATUAL',
+  dbError = null,
+  onClearDbError
 }) => {
   const [activeTab, setActiveTab] = useState<'categories' | 'establishments'>('categories');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -210,9 +214,29 @@ const Settings: React.FC<SettingsProps> = ({
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 pb-24 md:pb-4">
+          {dbError && (
+            <div className="mb-4 bg-red-50 border-l-4 border-red-500 p-4 rounded-r-lg shadow-sm flex items-start gap-3">
+              <AlertTriangle className="text-red-500 shrink-0 mt-0.5" size={18} />
+              <div className="flex-1">
+                <h4 className="font-bold text-red-800 text-xs uppercase">Erro no Banco de Dados</h4>
+                <p className="text-red-700 text-xs mt-0.5 font-semibold">{dbError}</p>
+              </div>
+              {onClearDbError && (
+                <button onClick={onClearDbError} className="text-red-400 hover:text-red-600">
+                  <X size={16} />
+                </button>
+              )}
+            </div>
+          )}
           
           {/* Add New Item */}
-          <div className="flex flex-col md:flex-row gap-2 mb-6 items-stretch md:items-center bg-gray-50 p-3 rounded-lg border border-gray-200 sticky top-0 z-10">
+          <form 
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleAdd(activeTab === 'categories' ? 'cat' : 'est');
+            }}
+            className="flex flex-col md:flex-row gap-2 mb-6 items-stretch md:items-center bg-gray-50 p-3 rounded-lg border border-gray-200 sticky top-0 z-10"
+          >
             <input 
                 type="text" 
                 value={newValue} 
@@ -232,19 +256,25 @@ const Settings: React.FC<SettingsProps> = ({
                     />
                 )}
                 <button 
-                    onClick={() => handleAdd(activeTab === 'categories' ? 'cat' : 'est')}
+                    type="submit"
                     className="bg-green-500 text-white px-6 h-12 rounded-lg hover:bg-green-600 flex items-center justify-center shadow-sm"
                 >
                     <Plus size={24} />
                 </button>
             </div>
-          </div>
+          </form>
 
           <ul className="space-y-3">
             {(activeTab === 'categories' ? categories : establishments).map((item) => (
               <li key={item.id} className="flex items-center justify-between p-4 bg-white border border-gray-100 rounded-lg shadow-sm hover:shadow-md transition-shadow">
                 {editingId === item.id ? (
-                    <div className="flex flex-col md:flex-row gap-2 w-full">
+                    <form 
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            handleSaveEdit(activeTab === 'categories' ? 'cat' : 'est');
+                        }}
+                        className="flex flex-col md:flex-row gap-2 w-full"
+                    >
                         <input 
                             type="text" 
                             value={editValue} 
@@ -262,10 +292,10 @@ const Settings: React.FC<SettingsProps> = ({
                                     className="w-24 p-2 border rounded"
                                 />
                             )}
-                            <button onClick={() => handleSaveEdit(activeTab === 'categories' ? 'cat' : 'est')} className="text-white bg-green-500 p-2 rounded"><Save size={20} /></button>
-                            <button onClick={() => finishEdit()} className="text-gray-500 bg-gray-200 p-2 rounded"><X size={20} /></button>
+                            <button type="submit" className="text-white bg-green-500 p-2 rounded"><Save size={20} /></button>
+                            <button type="button" onClick={() => finishEdit()} className="text-gray-500 bg-gray-200 p-2 rounded"><X size={20} /></button>
                         </div>
-                    </div>
+                    </form>
                 ) : (
                     <>
                         <div className="flex flex-col gap-1">

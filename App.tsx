@@ -28,6 +28,7 @@ const App: React.FC = () => {
   const [categories, setCategories] = useState<CategoryData[]>([]);
   const [monthlyBudgets, setMonthlyBudgets] = useState<MonthlyBudget[]>([]);
   const [establishments, setEstablishments] = useState<EstablishmentData[]>([]);
+  const [dbError, setDbError] = useState<string | null>(null);
   
   // Alterado para iniciar no MÊS SEGUINTE por padrão
   const [currentDate, setCurrentDate] = useState(addMonths(new Date(), 1));
@@ -58,34 +59,72 @@ const App: React.FC = () => {
   }, []);
 
   const fetchData = async () => {
-    const { data: transData } = await supabase.from('transactions').select('*');
-    if (transData) {
-        setTransactions(transData.map((t: any) => ({
-            id: t.id,
-            groupId: t.group_id,
-            description: t.description,
-            amount: parseFloat(t.amount),
-            type: t.type,
-            category: t.category,
-            date: t.date,
-            billingDate: t.billing_date,
-            recurrenceType: t.recurrence_type,
-            installmentCurrent: t.installment_current,
-            installmentTotal: t.installment_total,
-            isCreditCard: t.is_credit_card
-        })));
+    setDbError(null);
+    try {
+      const { data: transData, error: transError } = await supabase.from('transactions').select('*');
+      if (transError) {
+        console.error("Erro ao carregar transações:", transError);
+        setDbError(`Erro ao carregar transações: ${transError.message}`);
+      } else if (transData) {
+          setTransactions(transData.map((t: any) => ({
+              id: t.id,
+              groupId: t.group_id,
+              description: t.description,
+              amount: parseFloat(t.amount),
+              type: t.type,
+              category: t.category,
+              date: t.date,
+              billingDate: t.billing_date,
+              recurrenceType: t.recurrence_type,
+              installmentCurrent: t.installment_current,
+              installmentTotal: t.installment_total,
+              isCreditCard: t.is_credit_card
+          })));
+      }
+      
+      const { data: catData, error: catError } = await supabase.from('categories').select('*');
+      if (catError) {
+        console.error("Erro ao carregar categorias:", catError);
+        if (!dbError) setDbError(`Erro ao carregar categorias: ${catError.message}`);
+      } else if (catData) {
+        setCategories(catData.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')));
+      }
+      
+      const { data: mbData, error: mbError } = await supabase.from('monthly_budgets').select('*');
+      if (mbError) {
+        console.error("Erro ao carregar orçamentos mensais:", mbError);
+      } else if (mbData) {
+        setMonthlyBudgets(mbData);
+      }
+      
+      const { data: estData, error: estError } = await supabase.from('establishments').select('*');
+      if (estError) {
+        console.error("Erro ao carregar estabelecimentos:", estError);
+      } else if (estData) {
+        setEstablishments(estData.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')));
+      }
+    } catch (error: any) {
+      console.error("Erro geral na busca de dados:", error);
+      setDbError(`Erro de conexão com o banco de dados: ${error.message || error}`);
     }
-    const { data: catData } = await supabase.from('categories').select('*');
-    if (catData) setCategories(catData.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')));
-    const { data: mbData } = await supabase.from('monthly_budgets').select('*');
-    if (mbData) setMonthlyBudgets(mbData);
-    const { data: estData } = await supabase.from('establishments').select('*');
-    if (estData) setEstablishments(estData.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')));
   };
 
   useEffect(() => { if (session) fetchData(); }, [session]);
 
   const currentMonthKey = getMonthYearKey(currentDate);
+  
+  const otherMonthsWithTransactions = useMemo(() => {
+    const months = new Set<string>();
+    transactions.forEach(t => {
+      if (t.billingDate && t.billingDate.length >= 7) {
+        const monthKey = t.billingDate.slice(0, 7); // 'YYYY-MM'
+        if (monthKey !== currentMonthKey) {
+          months.add(monthKey);
+        }
+      }
+    });
+    return Array.from(months).sort();
+  }, [transactions, currentMonthKey]);
   
   const filteredTransactions = useMemo(() => {
     let result = transactions.filter(t => t.billingDate.startsWith(currentMonthKey));
@@ -152,6 +191,7 @@ const App: React.FC = () => {
 
   const handleSaveTransaction = async (newTransactions: Transaction[], mode: 'create' | 'update', original?: Transaction, scope?: 'single' | 'future') => {
     if (!session) return;
+    setDbError(null);
     const toDbFormat = (t: Transaction) => ({
         id: t.id, user_id: session.user.id, group_id: t.groupId, description: t.description, amount: t.amount,
         type: t.type, category: t.category, date: t.date, billing_date: t.billingDate, 
@@ -160,17 +200,44 @@ const App: React.FC = () => {
         installment_total: t.installmentTotal,
         is_credit_card: t.isCreditCard
     });
-    if (mode === 'create') {
-        await supabase.from('transactions').insert(newTransactions.map(toDbFormat));
-    } else if (original) {
-      if (scope === 'single') {
-        await supabase.from('transactions').upsert(toDbFormat(newTransactions[0]));
-      } else {
-        await supabase.from('transactions').delete().eq('group_id', original.groupId).gte('billing_date', original.billingDate);
-        await supabase.from('transactions').insert(newTransactions.map(toDbFormat));
+    try {
+      if (mode === 'create') {
+          const { error } = await supabase.from('transactions').insert(newTransactions.map(toDbFormat));
+          if (error) {
+              console.error("Erro ao inserir lançamento:", error);
+              alert(`Erro ao salvar lançamento no banco de dados: ${error.message}`);
+              setDbError(`Erro ao salvar: ${error.message}`);
+              return;
+          }
+      } else if (original) {
+        if (scope === 'single') {
+          const { error } = await supabase.from('transactions').upsert(toDbFormat(newTransactions[0]));
+          if (error) {
+              console.error("Erro ao atualizar lançamento:", error);
+              alert(`Erro ao atualizar lançamento no banco de dados: ${error.message}`);
+              setDbError(`Erro ao atualizar: ${error.message}`);
+              return;
+          }
+        } else {
+          const { error: deleteError } = await supabase.from('transactions').delete().eq('group_id', original.groupId).gte('billing_date', original.billingDate);
+          if (deleteError) {
+              console.error("Erro ao deletar parcelas futuras:", deleteError);
+              alert(`Erro ao atualizar parcelas futuras: ${deleteError.message}`);
+              return;
+          }
+          const { error: insertError } = await supabase.from('transactions').insert(newTransactions.map(toDbFormat));
+          if (insertError) {
+              console.error("Erro ao inserir novas parcelas:", insertError);
+              alert(`Erro ao reinserir parcelas atualizadas: ${insertError.message}`);
+              return;
+          }
+        }
       }
+      fetchData();
+    } catch (error: any) {
+        console.error("Erro inesperado ao salvar lançamento:", error);
+        alert(`Erro inesperado ao salvar: ${error.message || error}`);
     }
-    fetchData();
   };
 
   const handleDeleteClick = (transaction: Transaction) => {
@@ -197,23 +264,116 @@ const App: React.FC = () => {
 
   const addCategory = async (name: string, budget: number = 0) => {
       if (!session) return;
-      await supabase.from('categories').insert([{ name, budget, user_id: session.user.id }]);
-      fetchData();
+      setDbError(null);
+      try {
+        const { error } = await supabase.from('categories').insert([{ name, budget, user_id: session.user.id }]);
+        if (error) {
+          console.error("Erro ao adicionar categoria:", error);
+          alert(`Erro ao adicionar categoria: ${error.message}`);
+          setDbError(`Erro ao adicionar categoria: ${error.message}`);
+        } else {
+          fetchData();
+        }
+      } catch (e: any) {
+        console.error("Erro ao adicionar categoria:", e);
+        alert(`Erro inesperado ao adicionar categoria: ${e.message || e}`);
+        setDbError(`Erro inesperado: ${e.message || e}`);
+      }
   };
+
   const updateCategory = async (id: string, name: string, budget: number = 0, scope: 'single' | 'future' = 'future') => {
       if (!session) return;
-      if (scope === 'future') {
-        await supabase.from('categories').update({ name, budget }).eq('id', id);
-        await supabase.from('monthly_budgets').delete().eq('category_id', id).eq('month_year', currentMonthKey);
-      } else {
-        await supabase.from('monthly_budgets').upsert({ category_id: id, name, month_year: currentMonthKey, amount: budget, user_id: session.user.id }, { onConflict: 'category_id, month_year' });
+      setDbError(null);
+      try {
+        if (scope === 'future') {
+          const { error: err1 } = await supabase.from('categories').update({ name, budget }).eq('id', id);
+          if (err1) throw err1;
+          const { error: err2 } = await supabase.from('monthly_budgets').delete().eq('category_id', id).eq('month_year', currentMonthKey);
+          if (err2) throw err2;
+        } else {
+          const { error: err3 } = await supabase.from('monthly_budgets').upsert({ category_id: id, name, month_year: currentMonthKey, amount: budget, user_id: session.user.id }, { onConflict: 'category_id, month_year' });
+          if (err3) throw err3;
+        }
+        fetchData();
+      } catch (e: any) {
+        console.error("Erro ao atualizar categoria:", e);
+        alert(`Erro ao atualizar categoria: ${e.message || e}`);
+        setDbError(`Erro ao atualizar categoria: ${e.message || e}`);
       }
-      fetchData();
   };
-  const deleteCategory = async (id: string) => { await supabase.from('categories').delete().eq('id', id); fetchData(); };
-  const addEstablishment = async (name: string) => { if (!session) return; await supabase.from('establishments').insert([{ name, user_id: session.user.id }]); fetchData(); };
-  const updateEstablishment = async (id: string, name: string) => { await supabase.from('establishments').update({ name }).eq('id', id); fetchData(); };
-  const deleteEstablishment = async (id: string) => { await supabase.from('establishments').delete().eq('id', id); fetchData(); };
+
+  const deleteCategory = async (id: string) => {
+      if (!session) return;
+      setDbError(null);
+      try {
+        const { error } = await supabase.from('categories').delete().eq('id', id);
+        if (error) {
+          console.error("Erro ao excluir categoria:", error);
+          alert(`Erro ao excluir categoria: ${error.message}`);
+          setDbError(`Erro ao excluir categoria: ${error.message}`);
+        } else {
+          fetchData();
+        }
+      } catch (e: any) {
+        console.error("Erro ao excluir categoria:", e);
+        alert(`Erro inesperado ao excluir categoria: ${e.message || e}`);
+      }
+  };
+
+  const addEstablishment = async (name: string) => {
+      if (!session) return;
+      setDbError(null);
+      try {
+        const { error } = await supabase.from('establishments').insert([{ name, user_id: session.user.id }]);
+        if (error) {
+          console.error("Erro ao adicionar local:", error);
+          alert(`Erro ao adicionar local: ${error.message}`);
+          setDbError(`Erro ao adicionar local: ${error.message}`);
+        } else {
+          fetchData();
+        }
+      } catch (e: any) {
+        console.error("Erro ao adicionar local:", e);
+        alert(`Erro inesperado ao adicionar local: ${e.message || e}`);
+        setDbError(`Erro inesperado: ${e.message || e}`);
+      }
+  };
+
+  const updateEstablishment = async (id: string, name: string) => {
+      if (!session) return;
+      setDbError(null);
+      try {
+        const { error } = await supabase.from('establishments').update({ name }).eq('id', id);
+        if (error) {
+          console.error("Erro ao atualizar local:", error);
+          alert(`Erro ao atualizar local: ${error.message}`);
+          setDbError(`Erro ao atualizar local: ${error.message}`);
+        } else {
+          fetchData();
+        }
+      } catch (e: any) {
+        console.error("Erro ao atualizar local:", e);
+        alert(`Erro inesperado ao atualizar local: ${e.message || e}`);
+      }
+  };
+
+  const deleteEstablishment = async (id: string) => {
+      if (!session) return;
+      setDbError(null);
+      try {
+        const { error } = await supabase.from('establishments').delete().eq('id', id);
+        if (error) {
+          console.error("Erro ao excluir local:", error);
+          alert(`Erro ao excluir local: ${error.message}`);
+          setDbError(`Erro ao excluir local: ${error.message}`);
+        } else {
+          fetchData();
+        }
+      } catch (e: any) {
+        console.error("Erro ao excluir local:", e);
+        alert(`Erro inesperado ao excluir local: ${e.message || e}`);
+      }
+  };
 
   const handleNavigateToPeriod = (date: Date) => {
       setCurrentDate(date);
@@ -276,6 +436,25 @@ const App: React.FC = () => {
       </header>
 
       <main className="max-w-5xl mx-auto px-4 py-6 space-y-6">
+        {dbError && (
+          <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-xl shadow-sm flex items-start gap-3">
+            <AlertTriangle className="text-red-500 shrink-0 mt-0.5" size={20} />
+            <div className="flex-1">
+              <h4 className="font-bold text-red-800 text-sm uppercase">Ops! Ocorreu um problema com o banco de dados</h4>
+              <p className="text-red-700 text-xs mt-1 font-semibold">{dbError}</p>
+              <button 
+                onClick={fetchData} 
+                className="mt-2 text-xs bg-red-100 hover:bg-red-200 text-red-800 font-bold px-3 py-1.5 rounded uppercase transition-colors"
+              >
+                Tentar novamente
+              </button>
+            </div>
+            <button onClick={() => setDbError(null)} className="text-red-400 hover:text-red-600">
+              <X size={18} />
+            </button>
+          </div>
+        )}
+
         {viewMode === 'annual' ? (
              <AnnualComparison 
                 transactions={transactions} 
@@ -356,7 +535,14 @@ const App: React.FC = () => {
                                                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase ${getCategoryColor(t.category)}`}>
                                                     {t.category}
                                                 </span>
-                                                <span className="text-xs text-gray-500 flex items-center gap-1"><Calendar size={12} /> {formatDate(t.date)}</span>
+                                                <span className="text-xs text-gray-500 flex flex-wrap items-center gap-1">
+                                                    <Calendar size={12} /> {formatDate(t.date)}
+                                                    {t.date.slice(0, 7) !== t.billingDate.slice(0, 7) && (
+                                                        <span className="text-[9px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded-md font-extrabold uppercase border border-blue-100">
+                                                            Cobrança: {format(parseLocal(t.billingDate), 'MMM/yy', { locale: ptBR })}
+                                                        </span>
+                                                    )}
+                                                </span>
                                             </div>
                                             <div className="text-[10px] text-gray-400 uppercase font-bold">
                                                 {t.type === 'payroll_deduction' && <span className="text-indigo-600 flex items-center gap-1"><Info size={10} /> DESCONTO EM FOLHA</span>}
@@ -402,7 +588,14 @@ const App: React.FC = () => {
                         <tbody className="divide-y divide-gray-100">
                             {filteredTransactions.length > 0 ? filteredTransactions.map(t => (
                                 <tr key={t.id} className="hover:bg-gray-50 transition-colors group">
-                                <td className="p-4 text-sm text-gray-600">{formatDate(t.date)}</td>
+                                <td className="p-4 text-sm text-gray-600">
+                                    <div className="font-medium">{formatDate(t.date)}</div>
+                                    {t.date.slice(0, 7) !== t.billingDate.slice(0, 7) && (
+                                        <div className="text-[9px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded-md font-extrabold uppercase border border-blue-100 mt-1 w-fit">
+                                            Fatura: {format(parseLocal(t.billingDate), 'MMM/yy', { locale: ptBR })}
+                                        </div>
+                                    )}
+                                </td>
                                 <td className="p-4 font-bold text-gray-800 uppercase text-sm">
                                     <div className="flex flex-col">
                                         <div className="flex items-center gap-2">
@@ -435,6 +628,37 @@ const App: React.FC = () => {
                         </table>
                     </div>
                 </div>
+
+                {filteredTransactions.length === 0 && transactions.length > 0 && (
+                  <div className="bg-blue-50 border border-blue-100 rounded-xl p-5 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-3 bg-blue-600 text-white rounded-full">
+                        <Calendar size={24} />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-blue-900 uppercase text-sm">Lançamentos em outros períodos</h4>
+                        <p className="text-blue-700 text-xs mt-0.5 font-medium">Você tem lançamentos cadastrados em outros meses. Clique em um deles abaixo para ver:</p>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2 justify-center md:justify-end">
+                      {otherMonthsWithTransactions.map(mKey => {
+                        const [yr, mn] = mKey.split('-');
+                        const mDate = new Date(parseInt(yr), parseInt(mn) - 1, 1);
+                        const name = format(mDate, 'MMMM/yy', { locale: ptBR });
+                        return (
+                          <button
+                            key={mKey}
+                            onClick={() => handleNavigateToPeriod(mDate)}
+                            className="bg-blue-600 hover:bg-blue-700 text-white font-extrabold px-3 py-1.5 rounded-lg uppercase tracking-wider text-[10px] transition-all hover:scale-105"
+                          >
+                            {name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 <Dashboard transactions={filteredTransactions} currentMonthName={currentMonthName} />
             </>
         )}
@@ -452,7 +676,22 @@ const App: React.FC = () => {
         onAddCategory={addCategory} 
         onAddEstablishment={addEstablishment} 
       />
-      {isSettingsOpen && <Settings categories={effectiveCategories} establishments={establishments} onClose={() => setIsSettingsOpen(false)} onAddCategory={addCategory} onUpdateCategory={updateCategory} onDeleteCategory={deleteCategory} onAddEstablishment={addEstablishment} onUpdateEstablishment={updateEstablishment} onDeleteEstablishment={deleteEstablishment} currentMonthName={currentMonthName} />}
+      {isSettingsOpen && (
+        <Settings 
+          categories={effectiveCategories} 
+          establishments={establishments} 
+          onClose={() => setIsSettingsOpen(false)} 
+          onAddCategory={addCategory} 
+          onUpdateCategory={updateCategory} 
+          onDeleteCategory={deleteCategory} 
+          onAddEstablishment={addEstablishment} 
+          onUpdateEstablishment={updateEstablishment} 
+          onDeleteEstablishment={deleteEstablishment} 
+          currentMonthName={currentMonthName} 
+          dbError={dbError}
+          onClearDbError={() => setDbError(null)}
+        />
+      )}
       
       <GlobalSearch 
         isOpen={isGlobalSearchOpen} 
