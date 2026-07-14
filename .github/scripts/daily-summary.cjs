@@ -156,8 +156,8 @@ async function run() {
     console.log(`Encontrados ${userIds.length} usuário(s) nas transações.`);
 
     // Criar mensagem consolidada
-    let telegramMessage = `📊 *FINANCEIRO DIEGO - RELATÓRIO DIÁRIO*\n`;
-    telegramMessage += `🗓️ _Data: ${brtDay}/${brtMonth}/${brtYear} (08:00 BRT)_\n\n`;
+    let telegramMessage = `💰 *FINANCEIRO DIEGO*\n\n`;
+    telegramMessage += `📅 *Data:* ${brtDay}/${brtMonth}/${brtYear}\n\n`;
 
     for (let i = 0; i < userIds.length; i++) {
       const uId = userIds[i];
@@ -168,136 +168,54 @@ async function run() {
       }
 
       // Cálculos do usuário
-      let saldoAtualGeral = 0;
-      let saldoAteHoje = 0;
-      
       let receitasMes = 0;
-      let despesasMesComuns = 0;
-      let despesasMesFolha = 0;
+      let despesasMes = 0;
+      let lancamentosMesCount = 0;
 
-      const contasProximas = [];
-      const despesasMesAtual = [];
-      const despesasProximoMes = [];
+      let receitasProximoMes = 0;
+      let despesasProximoMesVal = 0;
+      let lancamentosProximoMesCount = 0;
 
       userTransactions.forEach(t => {
         const amt = Number(t.amount) || 0;
         const bDate = t.billing_date || t.date || '';
 
-        // All-time balance
-        if (t.type === 'income') {
-          saldoAtualGeral += amt;
-        } else if (t.type === 'expense' || t.type === 'payroll_deduction') {
-          saldoAtualGeral -= amt;
-        }
-
-        // Balance up to today (billing_date <= todayStr)
-        if (bDate && bDate <= todayStr) {
-          if (t.type === 'income') {
-            saldoAteHoje += amt;
-          } else if (t.type === 'expense' || t.type === 'payroll_deduction') {
-            saldoAteHoje -= amt;
-          }
-        }
-
         // Current month filter
         if (bDate && bDate.startsWith(currentMonthKey)) {
+          lancamentosMesCount++;
           if (t.type === 'income') {
             receitasMes += amt;
-          } else if (t.type === 'expense') {
-            despesasMesComuns += amt;
-          } else if (t.type === 'payroll_deduction') {
-            despesasMesFolha += amt;
+          } else if (t.type === 'expense' || t.type === 'payroll_deduction') {
+            despesasMes += amt;
           }
         }
 
-        // Maturing in the next 7 days (todayStr <= billing_date <= in7DaysStr)
-        // Only list expense & payroll_deduction as bills to pay
-        if (t.type !== 'income' && bDate && bDate >= todayStr && bDate <= in7DaysStr) {
-          contasProximas.push(t);
-        }
-
-        // Categorize monthly expenses
-        if ((t.type === 'expense' || t.type === 'payroll_deduction') && bDate) {
-          if (bDate.startsWith(currentMonthKey)) {
-            despesasMesAtual.push(t);
-          } else if (bDate.startsWith(nextMonthKey)) {
-            despesasProximoMes.push(t);
+        // Next month filter
+        if (bDate && bDate.startsWith(nextMonthKey)) {
+          lancamentosProximoMesCount++;
+          if (t.type === 'income') {
+            receitasProximoMes += amt;
+          } else if (t.type === 'expense' || t.type === 'payroll_deduction') {
+            despesasProximoMesVal += amt;
           }
         }
       });
 
-      const totalDespesasMes = despesasMesComuns + despesasMesFolha;
-      const saldoLivreRealMes = receitasMes - totalDespesasMes;
+      const saldoMes = receitasMes - despesasMes;
+      const saldoProximoMes = receitasProximoMes - despesasProximoMesVal;
 
-      telegramMessage += `💵 *Saldos:*\n`;
-      telegramMessage += `• *Saldo Geral Acumulado:* \`${formatBRL(saldoAtualGeral)}\`\n`;
-      telegramMessage += `• *Saldo Real até Hoje:* \`${formatBRL(saldoAteHoje)}\`\n\n`;
-
-      telegramMessage += `📈 *Mês Atual (${currentMonthKey}):*\n`;
+      telegramMessage += `📈 *Mês atual (${currentMonthKey})*\n\n`;
       telegramMessage += `• *Receitas:* \`${formatBRL(receitasMes)}\`\n`;
-      telegramMessage += `• *Despesas:* \`${formatBRL(totalDespesasMes)}\`\n`;
-      if (despesasMesFolha > 0) {
-        telegramMessage += `  _└ Comuns: ${formatBRL(despesasMesComuns)}_\n`;
-        telegramMessage += `  _└ Desc. Folha: ${formatBRL(despesasMesFolha)}_\n`;
-      }
-      telegramMessage += `• *Saldo Livre do Mês:* \`${formatBRL(saldoLivreRealMes)}\`\n\n`;
+      telegramMessage += `• *Despesas:* \`${formatBRL(despesasMes)}\`\n`;
+      telegramMessage += `• *Saldo do mês:* \`${formatBRL(saldoMes)}\`\n\n`;
 
-      telegramMessage += `⚠️ *Vencimentos nos próximos 7 dias:*\n`;
-      if (contasProximas.length > 0) {
-        // Ordenar por data de vencimento
-        contasProximas.sort((a, b) => {
-          const ad = a.billing_date || a.date || '';
-          const bd = b.billing_date || b.date || '';
-          return ad.localeCompare(bd);
-        });
+      telegramMessage += `📆 *Próximo mês (${nextMonthKey})*\n\n`;
+      telegramMessage += `• *Total de receitas previstas:* \`${formatBRL(receitasProximoMes)}\`\n`;
+      telegramMessage += `• *Total de despesas previstas:* \`${formatBRL(despesasProximoMesVal)}\`\n`;
+      telegramMessage += `• *Saldo previsto:* \`${formatBRL(saldoProximoMes)}\`\n\n`;
 
-        contasProximas.forEach(c => {
-          const emoji = c.is_credit_card ? '💳' : '📄';
-          const cardIndicator = c.is_credit_card ? ' (Cartão)' : '';
-          const folhaIndicator = c.type === 'payroll_deduction' ? ' (Folha)' : '';
-          telegramMessage += `• *${formatBrtDateStr(c.billing_date || c.date)}* - ${escapeMarkdown(c.description)} [${escapeMarkdown(c.category)}] - \`${formatBRL(c.amount)}\`${emoji}${cardIndicator}${folhaIndicator}\n`;
-        });
-      } else {
-        telegramMessage += `• _Nenhum vencimento registrado para os próximos 7 dias._\n`;
-      }
-      telegramMessage += `\n`;
-
-      telegramMessage += `📅 *Despesas do Mês Atual (${currentMonthKey}):*\n`;
-      if (despesasMesAtual.length > 0) {
-        despesasMesAtual.sort((a, b) => {
-          const ad = a.billing_date || a.date || '';
-          const bd = b.billing_date || b.date || '';
-          return ad.localeCompare(bd);
-        });
-
-        despesasMesAtual.forEach(c => {
-          const emoji = c.is_credit_card ? '💳' : '📄';
-          const cardIndicator = c.is_credit_card ? ' (Cartão)' : '';
-          const folhaIndicator = c.type === 'payroll_deduction' ? ' (Folha)' : '';
-          telegramMessage += `• *${formatBrtDateStr(c.billing_date || c.date)}* - ${escapeMarkdown(c.description)} - \`${formatBRL(c.amount)}\`${emoji}${cardIndicator}${folhaIndicator}\n`;
-        });
-      } else {
-        telegramMessage += `• _Nenhuma despesa registrada para o mês atual._\n`;
-      }
-      telegramMessage += `\n`;
-
-      telegramMessage += `📅 *Despesas do Próximo Mês (${nextMonthKey}):*\n`;
-      if (despesasProximoMes.length > 0) {
-        despesasProximoMes.sort((a, b) => {
-          const ad = a.billing_date || a.date || '';
-          const bd = b.billing_date || b.date || '';
-          return ad.localeCompare(bd);
-        });
-
-        despesasProximoMes.forEach(c => {
-          const emoji = c.is_credit_card ? '💳' : '📄';
-          const cardIndicator = c.is_credit_card ? ' (Cartão)' : '';
-          const folhaIndicator = c.type === 'payroll_deduction' ? ' (Folha)' : '';
-          telegramMessage += `• *${formatBrtDateStr(c.billing_date || c.date)}* - ${escapeMarkdown(c.description)} - \`${formatBRL(c.amount)}\`${emoji}${cardIndicator}${folhaIndicator}\n`;
-        });
-      } else {
-        telegramMessage += `• _Nenhuma despesa registrada para o próximo mês._\n`;
-      }
+      telegramMessage += `📊 *Quantidade de lançamentos do mês atual:* ${lancamentosMesCount}\n`;
+      telegramMessage += `📊 *Quantidade de lançamentos do próximo mês:* ${lancamentosProximoMesCount}\n`;
 
       if (i < userIds.length - 1) {
         telegramMessage += `\n───────────────────\n\n`;
