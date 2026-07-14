@@ -24,8 +24,19 @@ const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose, transactio
   const results = useMemo(() => {
     if (!query.trim() || query.length < 2) return [];
     const term = query.toLowerCase();
+    const termWithDot = term.replace(',', '.');
+    const termWithComma = term.replace('.', ',');
     return transactions
-      .filter(t => t.description.toLowerCase().includes(term))
+      .filter(t => {
+        const amountStr = t.amount.toString();
+        const amountCommaStr = amountStr.replace('.', ',');
+        return t.description.toLowerCase().includes(term) ||
+          t.category.toLowerCase().includes(term) ||
+          amountStr.includes(term) ||
+          amountStr.includes(termWithDot) ||
+          amountCommaStr.includes(term) ||
+          amountCommaStr.includes(termWithComma);
+      })
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
       .slice(0, 50); // Limite de 50 resultados para performance
   }, [query, transactions]);

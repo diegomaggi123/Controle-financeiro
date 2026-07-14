@@ -131,11 +131,18 @@ const App: React.FC = () => {
 
     if (searchTerm.trim()) {
         const term = normalizeString(searchTerm);
-        result = result.filter(t => 
-            normalizeString(t.description).includes(term) || 
-            t.amount.toString().includes(term) ||
-            normalizeString(t.category).includes(term)
-        );
+        const termWithDot = term.replace(',', '.');
+        const termWithComma = term.replace('.', ',');
+        result = result.filter(t => {
+            const amountStr = t.amount.toString();
+            const amountCommaStr = amountStr.replace('.', ',');
+            return normalizeString(t.description).includes(term) || 
+                normalizeString(t.category).includes(term) ||
+                amountStr.includes(term) ||
+                amountStr.includes(termWithDot) ||
+                amountCommaStr.includes(term) ||
+                amountCommaStr.includes(termWithComma);
+        });
     }
 
     if (cardFilter === 'card') {
