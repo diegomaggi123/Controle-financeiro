@@ -105,6 +105,14 @@ async function run() {
     const currentMonthKey = `${brtYear}-${brtMonth}`; // 'YYYY-MM'
     const todayStr = `${brtYear}-${brtMonth}-${brtDay}`; // 'YYYY-MM-DD'
 
+    let nextMonthYear = brtYear;
+    let nextMonthNum = brtDate.getUTCMonth() + 2; // getUTCMonth is 0-indexed, so next month is +2
+    if (nextMonthNum > 12) {
+      nextMonthNum = 1;
+      nextMonthYear += 1;
+    }
+    const nextMonthKey = `${nextMonthYear}-${String(nextMonthNum).padStart(2, '0')}`; // 'YYYY-MM'
+
     const brtDate7Days = new Date(brtDate.getTime() + 7 * 24 * 60 * 60 * 1000);
     const brtYear7 = brtDate7Days.getUTCFullYear();
     const brtMonth7 = String(brtDate7Days.getUTCMonth() + 1).padStart(2, '0');
@@ -168,6 +176,8 @@ async function run() {
       let despesasMesFolha = 0;
 
       const contasProximas = [];
+      const despesasMesAtual = [];
+      const despesasProximoMes = [];
 
       userTransactions.forEach(t => {
         const amt = Number(t.amount) || 0;
@@ -205,6 +215,15 @@ async function run() {
         if (t.type !== 'income' && bDate && bDate >= todayStr && bDate <= in7DaysStr) {
           contasProximas.push(t);
         }
+
+        // Categorize monthly expenses
+        if ((t.type === 'expense' || t.type === 'payroll_deduction') && bDate) {
+          if (bDate.startsWith(currentMonthKey)) {
+            despesasMesAtual.push(t);
+          } else if (bDate.startsWith(nextMonthKey)) {
+            despesasProximoMes.push(t);
+          }
+        }
       });
 
       const totalDespesasMes = despesasMesComuns + despesasMesFolha;
@@ -240,6 +259,44 @@ async function run() {
         });
       } else {
         telegramMessage += `• _Nenhum vencimento registrado para os próximos 7 dias._\n`;
+      }
+      telegramMessage += `\n`;
+
+      telegramMessage += `📅 *Despesas do Mês Atual (${currentMonthKey}):*\n`;
+      if (despesasMesAtual.length > 0) {
+        despesasMesAtual.sort((a, b) => {
+          const ad = a.billing_date || a.date || '';
+          const bd = b.billing_date || b.date || '';
+          return ad.localeCompare(bd);
+        });
+
+        despesasMesAtual.forEach(c => {
+          const emoji = c.is_credit_card ? '💳' : '📄';
+          const cardIndicator = c.is_credit_card ? ' (Cartão)' : '';
+          const folhaIndicator = c.type === 'payroll_deduction' ? ' (Folha)' : '';
+          telegramMessage += `• *${formatBrtDateStr(c.billing_date || c.date)}* - ${escapeMarkdown(c.description)} - \`${formatBRL(c.amount)}\`${emoji}${cardIndicator}${folhaIndicator}\n`;
+        });
+      } else {
+        telegramMessage += `• _Nenhuma despesa registrada para o mês atual._\n`;
+      }
+      telegramMessage += `\n`;
+
+      telegramMessage += `📅 *Despesas do Próximo Mês (${nextMonthKey}):*\n`;
+      if (despesasProximoMes.length > 0) {
+        despesasProximoMes.sort((a, b) => {
+          const ad = a.billing_date || a.date || '';
+          const bd = b.billing_date || b.date || '';
+          return ad.localeCompare(bd);
+        });
+
+        despesasProximoMes.forEach(c => {
+          const emoji = c.is_credit_card ? '💳' : '📄';
+          const cardIndicator = c.is_credit_card ? ' (Cartão)' : '';
+          const folhaIndicator = c.type === 'payroll_deduction' ? ' (Folha)' : '';
+          telegramMessage += `• *${formatBrtDateStr(c.billing_date || c.date)}* - ${escapeMarkdown(c.description)} - \`${formatBRL(c.amount)}\`${emoji}${cardIndicator}${folhaIndicator}\n`;
+        });
+      } else {
+        telegramMessage += `• _Nenhuma despesa registrada para o próximo mês._\n`;
       }
 
       if (i < userIds.length - 1) {
