@@ -50,111 +50,48 @@ const escapeMarkdown = (text) => {
 async function run() {
   const {
     SUPABASE_URL,
-    SUPABASE_ANON_KEY,
+    SUPABASE_SERVICE_ROLE_KEY,
     TELEGRAM_BOT_TOKEN,
     TELEGRAM_CHAT_ID
   } = process.env;
 
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
-    console.error('Erro: Variáveis de ambiente obrigatórias (SUPABASE_URL, SUPABASE_ANON_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID) não configuradas.');
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
+    console.error('Erro: Variáveis de ambiente obrigatórias (SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID) não configuradas.');
     process.exit(1);
   }
 
   console.log(`URL de Consulta Utilizada: ${SUPABASE_URL}/rest/v1/transactions?select=*`);
-  console.log('Iniciando consulta ao Supabase...');
+  console.log('Iniciando consulta ao Supabase com a Service Role Key (Bypass RLS)...');
 
   let transactions = [];
-  let fetchMethodUsed = 'REST API Direta';
 
   try {
-    // 1. Tentar buscar transações diretamente do Supabase REST API
+    // 1. Buscar transações do Supabase REST API usando a Service Role Key (Bypassa RLS com segurança no backend)
     const supabaseEndpoint = `${SUPABASE_URL}/rest/v1/transactions?select=*`;
     const supabaseOptions = {
       method: 'GET',
       headers: {
-        'apikey': SUPABASE_ANON_KEY,
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'apikey': SUPABASE_SERVICE_ROLE_KEY,
+        'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
         'Range': '0-9999'
       }
     };
 
-    let response;
-    try {
-      response = await makeRequest(supabaseEndpoint, supabaseOptions);
-      console.log(`[REST API] Código de Status HTTP: ${response.statusCode}`);
-      
-      if (Array.isArray(response.data)) {
-        transactions = response.data;
-        console.log(`[REST API] Quantidade de transações retornadas: ${transactions.length}`);
-      } else {
-        console.log(`[REST API] Resposta não é um array. Corpo retornado: ${JSON.stringify(response.data)}`);
-      }
-    } catch (restErr) {
-      console.error(`[REST API] Falha na consulta direta: ${restErr.message}`);
-    }
-
-    // Se o resultado veio vazio (geralmente devido ao RLS ativo que filtra registros para usuários anônimos)
-    if (transactions.length === 0) {
-      console.log('\n⚠️  ALERTA: A consulta direta retornou 0 transações.');
-      console.log('Isso ocorre quando o RLS (Row Level Security) está ativo na tabela "transactions" e a requisição não possui um token de usuário autenticado.');
-      console.log('Tentando método alternativo seguro via função RPC (get_transactions_secure)...');
-
-      const rpcEndpoint = `${SUPABASE_URL}/rest/v1/rpc/get_transactions_secure`;
-      const rpcPayload = JSON.stringify({ token: TELEGRAM_CHAT_ID });
-      const rpcOptions = {
-        method: 'POST',
-        headers: {
-          'apikey': SUPABASE_ANON_KEY,
-          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-          'Content-Type': 'application/json'
-        }
-      };
-
-      try {
-        console.log(`URL de RPC Utilizada: ${rpcEndpoint}`);
-        const rpcResponse = await makeRequest(rpcEndpoint, rpcOptions, rpcPayload);
-        console.log(`[RPC API] Código de Status HTTP: ${rpcResponse.statusCode}`);
-        
-        if (Array.isArray(rpcResponse.data)) {
-          transactions = rpcResponse.data;
-          fetchMethodUsed = 'RPC Seguro';
-          console.log(`[RPC API] Sucesso! Quantidade de transações retornadas: ${transactions.length}`);
-        } else {
-          console.log(`[RPC API] Resposta não é um array. Corpo retornado: ${JSON.stringify(rpcResponse.data)}`);
-        }
-      } catch (rpcErr) {
-        console.log(`\n❌ [RPC API] Falha ao executar a função RPC: ${rpcErr.message}`);
-        console.log('\n========================================================================');
-        console.log('🔑 INSTRUÇÃO DE SEGURANÇA SUPABASE RLS:');
-        console.log('Para que a GitHub Action consiga ler as transações de forma segura sem desativar o RLS,');
-        console.log('execute o seguinte comando SQL no seu Painel do Supabase (SQL Editor):\n');
-        console.log(`CREATE OR REPLACE FUNCTION get_transactions_secure(token TEXT)
-RETURNS SETOF transactions
-LANGUAGE plpgsql
-SECURITY DEFINER -- Ignora o RLS temporariamente apenas para esta função
-AS $$
-BEGIN
-    -- Compara o token enviado pela GitHub Action com o seu TELEGRAM_CHAT_ID ou TELEGRAM_BOT_TOKEN real
-    -- IMPORTANTE: Substitua os valores abaixo pelos seus dados configurados nas Secrets do GitHub!
-    IF token = '${TELEGRAM_CHAT_ID}' OR token = '${TELEGRAM_BOT_TOKEN}' THEN
-        RETURN QUERY SELECT * FROM transactions;
-    ELSE
-        RETURN;
-    END IF;
-END;
-$$;`);
-        console.log('\nIsso criará uma função RPC segura e criptografada que apenas a sua GitHub Action poderá chamar.');
-        console.log('========================================================================\n');
-        
-        throw new Error('Nenhuma transação pôde ser recuperada por bloqueio de RLS. Siga os passos acima para autorizar o acesso.');
-      }
+    const response = await makeRequest(supabaseEndpoint, supabaseOptions);
+    console.log(`[REST API] Código de Status HTTP: ${response.statusCode}`);
+    
+    if (Array.isArray(response.data)) {
+      transactions = response.data;
+      console.log(`[REST API] Sucesso! Quantidade de transações retornadas: ${transactions.length}`);
+    } else {
+      console.log(`[REST API] Resposta não é um array. Corpo retornado: ${JSON.stringify(response.data)}`);
     }
 
     if (transactions.length === 0) {
-      throw new Error('A lista de transações retornada está vazia.');
+      throw new Error('A lista de transações retornada está vazia ou não pôde ser acessada.');
     }
 
-    console.log(`Sucesso via ${fetchMethodUsed}! Carregadas ${transactions.length} transações.`);
+    console.log(`Sucesso! Carregadas ${transactions.length} transações.`);
 
     // 2. Definir datas em Brasília (UTC-3)
     const now = new Date();
