@@ -146,6 +146,15 @@ async function run() {
 
     const todayStr = `${brtYear}-${brtMonth}-${brtDay}`; // 'YYYY-MM-DD'
 
+    const currentMonthKey = `${brtYear}-${brtMonth}`;
+
+    const monthsPt = [
+      "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+      "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+    ];
+
+    const currentMonthLabel = `${monthsPt[brtDate.getUTCMonth()]}/${brtYear}`;
+
     // De acordo com a regra do App.tsx (linha 34), currentDate inicia no mês seguinte por padrão.
     // Adicionamos 1 mês para encontrar o mês de referência padrão do sistema.
     const refDate = new Date(brtDate);
@@ -154,12 +163,8 @@ async function run() {
     const refYear = refDate.getUTCFullYear();
     const refMonth = String(refDate.getUTCMonth() + 1).padStart(2, '0');
     const refMonthKey = `${refYear}-${refMonth}`; // 'YYYY-MM'
-
-    const monthsPt = [
-      "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
-      "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
-    ];
-    const refMonthName = `${monthsPt[refDate.getUTCMonth()]} de ${refYear}`;
+    const nextMonthLabel = `${monthsPt[refDate.getUTCMonth()]}/${refYear}`;
+    const nextMonthKey = refMonthKey;
 
     // Normalização matemática de valores decimais
     const normalizeCurrency = (value) => {
@@ -226,66 +231,77 @@ async function run() {
         telegramMessage += `👤 *Usuário: \`${escapeMarkdown(uId.slice(0, 8))}\`...*\n`;
       }
 
-      // Filtrar as transações do mês de referência (que começam com refMonthKey)
-      const userMonthTransactions = userTransactions.filter(t => t.billingDate.startsWith(refMonthKey));
+      // Função para calcular o resumo financeiro de um mês específico para o usuário seguindo as regras de negócio
+      const getMonthSummaryText = (monthKey, monthLabel, isNextMonth = false) => {
+        const userMonthTransactions = userTransactions.filter(t => t.billingDate.startsWith(monthKey));
 
-      // 1. Calcular Receitas Reais + Descontos em Folha (Receita Bruta)
-      const incomes = userMonthTransactions
-        .filter(t => t.type === 'income')
-        .reduce((sum, t) => normalizeCurrency(sum + t.amount), 0);
+        // 1. Calcular Receitas Reais + Descontos em Folha (Receita Bruta)
+        const incomes = userMonthTransactions
+          .filter(t => t.type === 'income')
+          .reduce((sum, t) => normalizeCurrency(sum + t.amount), 0);
 
-      const payrollDeductions = userMonthTransactions
-        .filter(t => t.type === 'payroll_deduction')
-        .reduce((sum, t) => normalizeCurrency(sum + t.amount), 0);
+        const payrollDeductions = userMonthTransactions
+          .filter(t => t.type === 'payroll_deduction')
+          .reduce((sum, t) => normalizeCurrency(sum + t.amount), 0);
 
-      const grossIncome = normalizeCurrency(incomes + payrollDeductions);
+        const grossIncome = normalizeCurrency(incomes + payrollDeductions);
 
-      // 2. Calcular Total apenas em Cartão de Crédito para visualização
-      const creditCardTotal = userMonthTransactions
-        .filter(t => t.type === 'expense' && t.isCreditCard === true)
-        .reduce((sum, t) => normalizeCurrency(sum + t.amount), 0);
+        // 2. Calcular Total apenas em Cartão de Crédito para visualização
+        const creditCardTotal = userMonthTransactions
+          .filter(t => t.type === 'expense' && t.isCreditCard === true)
+          .reduce((sum, t) => normalizeCurrency(sum + t.amount), 0);
 
-      // 3. Mapear gastos reais por categoria (incluindo descontos em folha)
-      const expensesMap = userMonthTransactions
-        .filter(t => t.type === 'expense' || t.type === 'payroll_deduction')
-        .reduce((acc, t) => {
-          acc[t.category] = normalizeCurrency((acc[t.category] || 0) + t.amount);
-          return acc;
-        }, {});
+        // 3. Mapear gastos reais por categoria (incluindo descontos em folha)
+        const expensesMap = userMonthTransactions
+          .filter(t => t.type === 'expense' || t.type === 'payroll_deduction')
+          .reduce((acc, t) => {
+            acc[t.category] = normalizeCurrency((acc[t.category] || 0) + t.amount);
+            return acc;
+          }, {});
 
-      // 4. ALGORITMO DE COMPROMETIMENTO (REGRA DE NEGÓCIO CRUCIAL DO SISTEMA)
-      // O comprometimento é a soma do maior valor entre (Meta) e (Gasto Real) para cada categoria.
-      let committedExpense = 0;
-      const processedCategories = new Set();
+        // 4. ALGORITMO DE COMPROMETIMENTO (REGRA DE NEGÓCIO CRUCIAL DO SISTEMA)
+        let committedExpense = 0;
+        const processedCategories = new Set();
 
-      const userCategories = categories.filter(cat => cat.user_id === uId || (!cat.user_id && uId === 'default'));
-      const userBudgets = monthlyBudgets.filter(mb => mb.user_id === uId || (!mb.user_id && uId === 'default'));
+        const userCategories = categories.filter(cat => cat.user_id === uId || (!cat.user_id && uId === 'default'));
+        const userBudgets = monthlyBudgets.filter(mb => mb.user_id === uId || (!mb.user_id && uId === 'default'));
 
-      userCategories.forEach(cat => {
-        const specificBudget = userBudgets.find(mb => mb.category_id === cat.id && mb.month_year === refMonthKey);
-        const budgetRaw = specificBudget ? specificBudget.amount : cat.budget;
-        const budget = normalizeCurrency(parseFloat(budgetRaw) || 0);
-        const actual = normalizeCurrency(expensesMap[cat.name] || 0);
-        
-        committedExpense = normalizeCurrency(committedExpense + Math.max(budget, actual));
-        processedCategories.add(cat.name);
-      });
+        userCategories.forEach(cat => {
+          const specificBudget = userBudgets.find(mb => mb.category_id === cat.id && mb.month_year === monthKey);
+          const budgetRaw = specificBudget ? specificBudget.amount : cat.budget;
+          const budget = normalizeCurrency(parseFloat(budgetRaw) || 0);
+          const actual = normalizeCurrency(expensesMap[cat.name] || 0);
+          
+          committedExpense = normalizeCurrency(committedExpense + Math.max(budget, actual));
+          processedCategories.add(cat.name);
+        });
 
-      // Adicionar categorias "avulsas" que não estão no cadastro oficial mas têm lançamentos reais
-      Object.keys(expensesMap).forEach(catName => {
-        if (!processedCategories.has(catName)) {
-          committedExpense = normalizeCurrency(committedExpense + expensesMap[catName]);
-        }
-      });
+        // Adicionar categorias "avulsas" que não estão no cadastro oficial mas têm lançamentos reais
+        Object.keys(expensesMap).forEach(catName => {
+          if (!processedCategories.has(catName)) {
+            committedExpense = normalizeCurrency(committedExpense + expensesMap[catName]);
+          }
+        });
 
-      const balance = normalizeCurrency(grossIncome - committedExpense);
+        const balance = normalizeCurrency(grossIncome - committedExpense);
 
-      telegramMessage += `📅 *Mês de referência:* ${refMonthName}\n\n`;
-      telegramMessage += `📈 *Receita Bruta:* \`${formatBRL(grossIncome)}\` _(incluindo desconto em folha)_\n`;
-      telegramMessage += `📉 *Total Comprometido:* \`${formatBRL(committedExpense)}\` _(meta ou real)_\n`;
-      telegramMessage += `💳 *Total comprometido em cartão:* \`${formatBRL(creditCardTotal)}\`\n`;
-      telegramMessage += `💰 *Saldo Livre:* \`${formatBRL(balance)}\`\n\n`;
-      telegramMessage += `📊 *Quantidade total de lançamentos do mês:* ${userMonthTransactions.length}\n`;
+        const title = isNextMonth ? `📅 *Próximo Mês – ${monthLabel}*` : `📅 *Mês Atual – ${monthLabel}*`;
+
+        let block = `${title}\n\n`;
+        block += `* *Receita Bruta:* \`${formatBRL(grossIncome)}\`\n`;
+        block += `* *Total Comprometido:* \`${formatBRL(committedExpense)}\`\n`;
+        block += `* *Em Cartão:* \`${formatBRL(creditCardTotal)}\`\n`;
+        block += `* *Saldo Livre:* \`${formatBRL(balance)}\`\n`;
+        block += `* *Lançamentos:* ${userMonthTransactions.length}\n`;
+
+        return block;
+      };
+
+      // Adicionar o resumo do Mês Atual
+      telegramMessage += getMonthSummaryText(currentMonthKey, currentMonthLabel, false);
+      telegramMessage += `\n`;
+      // Adicionar o resumo do Próximo Mês
+      telegramMessage += getMonthSummaryText(nextMonthKey, nextMonthLabel, true);
 
       if (i < userIds.length - 1) {
         telegramMessage += `\n───────────────────\n\n`;
