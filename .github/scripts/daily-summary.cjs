@@ -64,6 +64,8 @@ async function run() {
   console.log('Iniciando consulta ao Supabase com a Service Role Key (Bypass RLS)...');
 
   let transactions = [];
+  let categories = [];
+  let monthlyBudgets = [];
 
   try {
     // 1. Buscar transações do Supabase REST API usando a Service Role Key (Bypassa RLS com segurança no backend)
@@ -91,7 +93,47 @@ async function run() {
       throw new Error('A lista de transações retornada está vazia ou não pôde ser acessada.');
     }
 
-    console.log(`Sucesso! Carregadas ${transactions.length} transações.`);
+    // 1b. Buscar categorias do Supabase REST API usando a Service Role Key
+    const categoriesEndpoint = `${SUPABASE_URL}/rest/v1/categories?select=*`;
+    const categoriesOptions = {
+      method: 'GET',
+      headers: {
+        'apikey': SUPABASE_SERVICE_ROLE_KEY,
+        'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        'Range': '0-9999'
+      }
+    };
+    try {
+      const catResponse = await makeRequest(categoriesEndpoint, categoriesOptions);
+      if (Array.isArray(catResponse.data)) {
+        categories = catResponse.data;
+        console.log(`[REST API] Carregadas ${categories.length} categorias.`);
+      }
+    } catch (e) {
+      console.warn(`[REST API] Erro ao carregar categorias: ${e.message}`);
+    }
+
+    // 1c. Buscar monthly_budgets do Supabase REST API usando a Service Role Key
+    const budgetsEndpoint = `${SUPABASE_URL}/rest/v1/monthly_budgets?select=*`;
+    const budgetsOptions = {
+      method: 'GET',
+      headers: {
+        'apikey': SUPABASE_SERVICE_ROLE_KEY,
+        'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        'Range': '0-9999'
+      }
+    };
+    try {
+      const budgetResponse = await makeRequest(budgetsEndpoint, budgetsOptions);
+      if (Array.isArray(budgetResponse.data)) {
+        monthlyBudgets = budgetResponse.data;
+        console.log(`[REST API] Carregados ${monthlyBudgets.length} orçamentos mensais.`);
+      }
+    } catch (e) {
+      console.warn(`[REST API] Erro ao carregar orçamentos mensais: ${e.message}`);
+    }
+
+    console.log(`Sucesso! Dados carregados: ${transactions.length} transações, ${categories.length} categorias, ${monthlyBudgets.length} orçamentos.`);
 
     // 2. Definir datas em Brasília (UTC-3)
     const now = new Date();
@@ -102,50 +144,68 @@ async function run() {
     const brtMonth = String(brtDate.getUTCMonth() + 1).padStart(2, '0');
     const brtDay = String(brtDate.getUTCDate()).padStart(2, '0');
 
-    const currentMonthKey = `${brtYear}-${brtMonth}`; // 'YYYY-MM'
     const todayStr = `${brtYear}-${brtMonth}-${brtDay}`; // 'YYYY-MM-DD'
 
-    let nextMonthYear = brtYear;
-    let nextMonthNum = brtDate.getUTCMonth() + 2; // getUTCMonth is 0-indexed, so next month is +2
-    if (nextMonthNum > 12) {
-      nextMonthNum = 1;
-      nextMonthYear += 1;
-    }
-    const nextMonthKey = `${nextMonthYear}-${String(nextMonthNum).padStart(2, '0')}`; // 'YYYY-MM'
+    // De acordo com a regra do App.tsx (linha 34), currentDate inicia no mês seguinte por padrão.
+    // Adicionamos 1 mês para encontrar o mês de referência padrão do sistema.
+    const refDate = new Date(brtDate);
+    refDate.setUTCMonth(refDate.getUTCMonth() + 1);
 
-    const brtDate7Days = new Date(brtDate.getTime() + 7 * 24 * 60 * 60 * 1000);
-    const brtYear7 = brtDate7Days.getUTCFullYear();
-    const brtMonth7 = String(brtDate7Days.getUTCMonth() + 1).padStart(2, '0');
-    const brtDay7 = String(brtDate7Days.getUTCDate()).padStart(2, '0');
-    const in7DaysStr = `${brtYear7}-${brtMonth7}-${brtDay7}`; // 'YYYY-MM-DD'
+    const refYear = refDate.getUTCFullYear();
+    const refMonth = String(refDate.getUTCMonth() + 1).padStart(2, '0');
+    const refMonthKey = `${refYear}-${refMonth}`; // 'YYYY-MM'
 
-    // Formatter de Moeda BRL
+    const monthsPt = [
+      "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+      "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+    ];
+    const refMonthName = `${monthsPt[refDate.getUTCMonth()]} de ${refYear}`;
+
+    // Normalização matemática de valores decimais
+    const normalizeCurrency = (value) => {
+      return Math.round((value + Number.EPSILON) * 100) / 100;
+    };
+
+    // Formatter de Moeda BRL idêntico ao utilitário do sistema
     const formatBRL = (val) => {
       try {
         return new Intl.NumberFormat('pt-BR', {
           style: 'currency',
           currency: 'BRL'
-        }).format(val);
+        }).format(normalizeCurrency(val));
       } catch (e) {
-        const fixed = Number(val).toFixed(2);
+        const fixed = Number(normalizeCurrency(val)).toFixed(2);
         const parts = fixed.split('.');
         parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ".");
         return `R$ ${parts.join(',')}`;
       }
     };
 
-    // Helper para converter string de data em formato brasileiro
-    const formatBrtDateStr = (dateStr) => {
-      if (!dateStr) return '';
-      const parts = dateStr.split('-');
-      if (parts.length !== 3) return dateStr;
-      return `${parts[2]}/${parts[1]}/${parts[0].slice(2)}`;
-    };
+    // Mapear transações exatamente como o App.tsx trata no carregamento
+    const mappedTransactions = transactions.map(t => {
+      const amountParsed = parseFloat(t.amount) || 0;
+      const bDate = t.billing_date || t.date || todayStr;
+      return {
+        id: t.id,
+        groupId: t.group_id,
+        description: t.description || 'SEM DESCRIÇÃO',
+        amount: amountParsed,
+        type: t.type,
+        category: t.category || 'OUTROS',
+        date: t.date || todayStr,
+        billingDate: bDate,
+        recurrenceType: t.recurrence_type || 'single',
+        installmentCurrent: t.installment_current,
+        installmentTotal: t.installment_total,
+        isCreditCard: !!t.is_credit_card,
+        user_id: t.user_id || 'default'
+      };
+    });
 
-    // Agrupar transações por usuário (caso haja múltiplos)
+    // Agrupar transações mapeadas por usuário
     const transactionsByUser = {};
-    transactions.forEach(t => {
-      const uId = t.user_id || 'default';
+    mappedTransactions.forEach(t => {
+      const uId = t.user_id;
       if (!transactionsByUser[uId]) {
         transactionsByUser[uId] = [];
       }
@@ -157,7 +217,6 @@ async function run() {
 
     // Criar mensagem consolidada
     let telegramMessage = `💰 *FINANCEIRO DIEGO*\n\n`;
-    telegramMessage += `📅 *Data:* ${brtDay}/${brtMonth}/${brtYear}\n\n`;
 
     for (let i = 0; i < userIds.length; i++) {
       const uId = userIds[i];
@@ -167,55 +226,66 @@ async function run() {
         telegramMessage += `👤 *Usuário: \`${escapeMarkdown(uId.slice(0, 8))}\`...*\n`;
       }
 
-      // Cálculos do usuário
-      let receitasMes = 0;
-      let despesasMes = 0;
-      let lancamentosMesCount = 0;
+      // Filtrar as transações do mês de referência (que começam com refMonthKey)
+      const userMonthTransactions = userTransactions.filter(t => t.billingDate.startsWith(refMonthKey));
 
-      let receitasProximoMes = 0;
-      let despesasProximoMesVal = 0;
-      let lancamentosProximoMesCount = 0;
+      // 1. Calcular Receitas Reais + Descontos em Folha (Receita Bruta)
+      const incomes = userMonthTransactions
+        .filter(t => t.type === 'income')
+        .reduce((sum, t) => normalizeCurrency(sum + t.amount), 0);
 
-      userTransactions.forEach(t => {
-        const amt = Number(t.amount) || 0;
-        const bDate = t.billing_date || t.date || '';
+      const payrollDeductions = userMonthTransactions
+        .filter(t => t.type === 'payroll_deduction')
+        .reduce((sum, t) => normalizeCurrency(sum + t.amount), 0);
 
-        // Current month filter
-        if (bDate && bDate.startsWith(currentMonthKey)) {
-          lancamentosMesCount++;
-          if (t.type === 'income') {
-            receitasMes += amt;
-          } else if (t.type === 'expense' || t.type === 'payroll_deduction') {
-            despesasMes += amt;
-          }
-        }
+      const grossIncome = normalizeCurrency(incomes + payrollDeductions);
 
-        // Next month filter
-        if (bDate && bDate.startsWith(nextMonthKey)) {
-          lancamentosProximoMesCount++;
-          if (t.type === 'income') {
-            receitasProximoMes += amt;
-          } else if (t.type === 'expense' || t.type === 'payroll_deduction') {
-            despesasProximoMesVal += amt;
-          }
+      // 2. Calcular Total apenas em Cartão de Crédito para visualização
+      const creditCardTotal = userMonthTransactions
+        .filter(t => t.type === 'expense' && t.isCreditCard === true)
+        .reduce((sum, t) => normalizeCurrency(sum + t.amount), 0);
+
+      // 3. Mapear gastos reais por categoria (incluindo descontos em folha)
+      const expensesMap = userMonthTransactions
+        .filter(t => t.type === 'expense' || t.type === 'payroll_deduction')
+        .reduce((acc, t) => {
+          acc[t.category] = normalizeCurrency((acc[t.category] || 0) + t.amount);
+          return acc;
+        }, {});
+
+      // 4. ALGORITMO DE COMPROMETIMENTO (REGRA DE NEGÓCIO CRUCIAL DO SISTEMA)
+      // O comprometimento é a soma do maior valor entre (Meta) e (Gasto Real) para cada categoria.
+      let committedExpense = 0;
+      const processedCategories = new Set();
+
+      const userCategories = categories.filter(cat => cat.user_id === uId || (!cat.user_id && uId === 'default'));
+      const userBudgets = monthlyBudgets.filter(mb => mb.user_id === uId || (!mb.user_id && uId === 'default'));
+
+      userCategories.forEach(cat => {
+        const specificBudget = userBudgets.find(mb => mb.category_id === cat.id && mb.month_year === refMonthKey);
+        const budgetRaw = specificBudget ? specificBudget.amount : cat.budget;
+        const budget = normalizeCurrency(parseFloat(budgetRaw) || 0);
+        const actual = normalizeCurrency(expensesMap[cat.name] || 0);
+        
+        committedExpense = normalizeCurrency(committedExpense + Math.max(budget, actual));
+        processedCategories.add(cat.name);
+      });
+
+      // Adicionar categorias "avulsas" que não estão no cadastro oficial mas têm lançamentos reais
+      Object.keys(expensesMap).forEach(catName => {
+        if (!processedCategories.has(catName)) {
+          committedExpense = normalizeCurrency(committedExpense + expensesMap[catName]);
         }
       });
 
-      const saldoMes = receitasMes - despesasMes;
-      const saldoProximoMes = receitasProximoMes - despesasProximoMesVal;
+      const balance = normalizeCurrency(grossIncome - committedExpense);
 
-      telegramMessage += `📈 *Mês atual (${currentMonthKey})*\n\n`;
-      telegramMessage += `• *Receitas:* \`${formatBRL(receitasMes)}\`\n`;
-      telegramMessage += `• *Despesas:* \`${formatBRL(despesasMes)}\`\n`;
-      telegramMessage += `• *Saldo do mês:* \`${formatBRL(saldoMes)}\`\n\n`;
-
-      telegramMessage += `📆 *Próximo mês (${nextMonthKey})*\n\n`;
-      telegramMessage += `• *Total de receitas previstas:* \`${formatBRL(receitasProximoMes)}\`\n`;
-      telegramMessage += `• *Total de despesas previstas:* \`${formatBRL(despesasProximoMesVal)}\`\n`;
-      telegramMessage += `• *Saldo previsto:* \`${formatBRL(saldoProximoMes)}\`\n\n`;
-
-      telegramMessage += `📊 *Quantidade de lançamentos do mês atual:* ${lancamentosMesCount}\n`;
-      telegramMessage += `📊 *Quantidade de lançamentos do próximo mês:* ${lancamentosProximoMesCount}\n`;
+      telegramMessage += `📅 *Mês de referência:* ${refMonthName}\n\n`;
+      telegramMessage += `📈 *Receita Bruta:* \`${formatBRL(grossIncome)}\` _(incluindo desconto em folha)_\n`;
+      telegramMessage += `📉 *Total Comprometido:* \`${formatBRL(committedExpense)}\` _(meta ou real)_\n`;
+      telegramMessage += `💳 *Total comprometido em cartão:* \`${formatBRL(creditCardTotal)}\`\n`;
+      telegramMessage += `💰 *Saldo Livre:* \`${formatBRL(balance)}\`\n\n`;
+      telegramMessage += `📊 *Quantidade total de lançamentos do mês:* ${userMonthTransactions.length}\n`;
 
       if (i < userIds.length - 1) {
         telegramMessage += `\n───────────────────\n\n`;
