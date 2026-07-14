@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Transaction, CategoryData, EstablishmentData, MonthlyBudget } from './types';
 import { generateId, formatCurrency, formatDate, getMonthYearKey, getCategoryColor, exportToExcel, exportToPDF, normalizeString, parseLocal } from './utils';
 import TransactionForm from './components/TransactionForm';
@@ -46,70 +46,138 @@ const App: React.FC = () => {
   const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
   const [cardFilter, setCardFilter] = useState<CardFilter>('all');
 
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setIsLoadingSession(false);
-    });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      if (session) fetchData();
-    });
-    return () => subscription.unsubscribe();
-  }, []);
+  const fetchCounterRef = useRef(0);
 
-  const fetchData = async () => {
+  const fetchData = async (currentSession?: Session | null) => {
+    const activeSession = currentSession !== undefined ? currentSession : session;
+    if (!activeSession) {
+      console.log("fetchData ignorado: Nenhuma sessão ativa.");
+      return;
+    }
+    
+    const fetchId = ++fetchCounterRef.current;
     setDbError(null);
+    
     try {
-      const { data: transData, error: transError } = await supabase.from('transactions').select('*');
-      if (transError) {
-        console.error("Erro ao carregar transações:", transError);
-        setDbError(`Erro ao carregar transações: ${transError.message}`);
-      } else if (transData) {
-          setTransactions(transData.map((t: any) => ({
-              id: t.id,
-              groupId: t.group_id,
-              description: t.description,
-              amount: parseFloat(t.amount),
-              type: t.type,
-              category: t.category,
-              date: t.date,
-              billingDate: t.billing_date,
-              recurrenceType: t.recurrence_type,
-              installmentCurrent: t.installment_current,
-              installmentTotal: t.installment_total,
-              isCreditCard: t.is_credit_card
-          })));
+      console.log(`[fetchData #${fetchId}] Iniciando busca de dados para o usuário: ${activeSession.user.id}`);
+      
+      const { data: transData, error: transError } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('user_id', activeSession.user.id)
+        .order('date', { ascending: true }); // Ordenação determinística por data de compra
+        
+      if (fetchId !== fetchCounterRef.current) {
+        console.warn(`[fetchData #${fetchId}] Cancelado: Uma nova busca de dados foi iniciada.`);
+        return;
       }
       
-      const { data: catData, error: catError } = await supabase.from('categories').select('*');
+      if (transError) {
+        console.error(`[fetchData #${fetchId}] Erro ao carregar transações do Supabase:`, transError);
+        setDbError(`Erro ao carregar transações: ${transError.message}`);
+      } else if (transData) {
+        console.log(`[fetchData #${fetchId}] CARREGAMENTO BEM-SUCEDIDO!`);
+        console.log(`[fetchData #${fetchId}] Quantidade recebida do Supabase:`, transData.length);
+        console.table(transData.map(t => ({
+          id: t.id,
+          description: t.description,
+          amount: t.amount,
+          date: t.date,
+          billing_date: t.billing_date
+        })).slice(0, 10)); // Exibe os 10 primeiros no console para conferência
+        
+        const mapped = transData.map((t: any) => {
+          const amountParsed = parseFloat(t.amount) || 0;
+          // Tratamento para garantir que nenhuma transação suma por erro de data
+          const bDate = t.billing_date || t.date || format(new Date(), 'yyyy-MM-dd');
+          return {
+            id: t.id,
+            groupId: t.group_id,
+            description: t.description || 'SEM DESCRIÇÃO',
+            amount: amountParsed,
+            type: t.type,
+            category: t.category || 'OUTROS',
+            date: t.date || format(new Date(), 'yyyy-MM-dd'),
+            billingDate: bDate,
+            recurrenceType: t.recurrence_type || 'single',
+            installmentCurrent: t.installment_current,
+            installmentTotal: t.installment_total,
+            isCreditCard: !!t.is_credit_card
+          };
+        });
+        
+        setTransactions(mapped);
+        console.log(`[fetchData #${fetchId}] Quantidade renderizada no estado global (transactions):`, mapped.length);
+      }
+      
+      // Buscar categorias com filtro de usuário
+      const { data: catData, error: catError } = await supabase
+        .from('categories')
+        .select('*')
+        .eq('user_id', activeSession.user.id);
+        
+      if (fetchId !== fetchCounterRef.current) return;
+      
       if (catError) {
-        console.error("Erro ao carregar categorias:", catError);
+        console.error(`[fetchData #${fetchId}] Erro ao carregar categorias:`, catError);
         if (!dbError) setDbError(`Erro ao carregar categorias: ${catError.message}`);
       } else if (catData) {
         setCategories(catData.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')));
       }
       
-      const { data: mbData, error: mbError } = await supabase.from('monthly_budgets').select('*');
+      // Buscar orçamentos mensais com filtro de usuário
+      const { data: mbData, error: mbError } = await supabase
+        .from('monthly_budgets')
+        .select('*')
+        .eq('user_id', activeSession.user.id);
+        
+      if (fetchId !== fetchCounterRef.current) return;
+      
       if (mbError) {
-        console.error("Erro ao carregar orçamentos mensais:", mbError);
+        console.error(`[fetchData #${fetchId}] Erro ao carregar orçamentos mensais:`, mbError);
       } else if (mbData) {
         setMonthlyBudgets(mbData);
       }
       
-      const { data: estData, error: estError } = await supabase.from('establishments').select('*');
+      // Buscar estabelecimentos com filtro de usuário
+      const { data: estData, error: estError } = await supabase
+        .from('establishments')
+        .select('*')
+        .eq('user_id', activeSession.user.id);
+        
+      if (fetchId !== fetchCounterRef.current) return;
+      
       if (estError) {
-        console.error("Erro ao carregar estabelecimentos:", estError);
+        console.error(`[fetchData #${fetchId}] Erro ao carregar estabelecimentos:`, estError);
       } else if (estData) {
         setEstablishments(estData.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')));
       }
+      
     } catch (error: any) {
-      console.error("Erro geral na busca de dados:", error);
-      setDbError(`Erro de conexão com o banco de dados: ${error.message || error}`);
+      console.error(`[fetchData #${fetchId}] Erro catastrófico de conexão/processamento:`, error);
+      if (fetchId === fetchCounterRef.current) {
+        setDbError(`Erro de conexão com o banco de dados: ${error.message || error}`);
+      }
     }
   };
 
-  useEffect(() => { if (session) fetchData(); }, [session]);
+  useEffect(() => {
+    // Escuta única e robusta de autenticação e sessão
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      console.log(`[onAuthStateChange] Evento: ${_event} | Sessão ativa: ${!!session}`);
+      setSession(session);
+      setIsLoadingSession(false);
+      if (session) {
+        fetchData(session);
+      } else {
+        setTransactions([]);
+        setCategories([]);
+        setMonthlyBudgets([]);
+        setEstablishments([]);
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, []);
 
   const currentMonthKey = getMonthYearKey(currentDate);
   
@@ -127,7 +195,34 @@ const App: React.FC = () => {
   }, [transactions, currentMonthKey]);
   
   const filteredTransactions = useMemo(() => {
-    let result = transactions.filter(t => t.billingDate.startsWith(currentMonthKey));
+    console.log("=== [filteredTransactions] INICIANDO FILTRAGEM MENSAL ===");
+    console.log(`[filteredTransactions] Mês chave selecionado: ${currentMonthKey}`);
+    console.log(`[filteredTransactions] Quantidade inicial no estado: ${transactions.length}`);
+
+    let filteredByMonth: Transaction[] = [];
+    let discardedCount = 0;
+    
+    transactions.forEach(t => {
+      if (!t.billingDate) {
+        console.warn(`[filteredTransactions] Registro Descartado - ID: ${t.id} | Descrição: "${t.description}" | Motivo: billingDate está nulo ou indefinido.`);
+        discardedCount++;
+        return;
+      }
+      
+      const isMatch = t.billingDate.startsWith(currentMonthKey);
+      if (isMatch) {
+        filteredByMonth.push(t);
+      } else {
+        // Log para controle de descarte por outro período
+        // console.log(`[filteredTransactions] Registro em outro período - ID: ${t.id} | Descrição: "${t.description}" | billingDate: ${t.billingDate}`);
+        discardedCount++;
+      }
+    });
+
+    console.log(`[filteredTransactions] Quantidade que passou pelo filtro do mês: ${filteredByMonth.length}`);
+    console.log(`[filteredTransactions] Quantidade de registros de outros períodos ou inválidos ignorados neste mês: ${discardedCount}`);
+
+    let result = filteredByMonth;
 
     if (searchTerm.trim()) {
         const term = normalizeString(searchTerm);
@@ -143,16 +238,19 @@ const App: React.FC = () => {
                 amountCommaStr.includes(term) ||
                 amountCommaStr.includes(termWithComma);
         });
+        console.log(`[filteredTransactions] Quantidade após filtro de busca por "${searchTerm}": ${result.length}`);
     }
 
     if (cardFilter === 'card') {
         result = result.filter(t => t.isCreditCard === true);
+        console.log(`[filteredTransactions] Quantidade após filtro "Apenas Cartão": ${result.length}`);
     } else if (cardFilter === 'no_card') {
         result = result.filter(t => t.isCreditCard !== true);
+        console.log(`[filteredTransactions] Quantidade após filtro "Apenas Dinheiro": ${result.length}`);
     }
 
     // Lógica de Ordenação
-    return result.sort((a, b) => {
+    const sorted = [...result].sort((a, b) => {
         let comparison = 0;
         switch (sortBy) {
             case 'date':
@@ -170,6 +268,10 @@ const App: React.FC = () => {
         }
         return sortOrder === 'asc' ? comparison : -comparison;
     });
+
+    console.log(`[filteredTransactions] Quantidade final de transações renderizada: ${sorted.length}`);
+    console.log("==========================================================");
+    return sorted;
   }, [transactions, currentDate, currentMonthKey, searchTerm, sortBy, sortOrder, cardFilter]);
 
   const handleSort = (field: SortField) => {
