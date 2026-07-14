@@ -497,7 +497,20 @@ const App: React.FC = () => {
       <header className="bg-blue-800 text-white sticky top-0 z-30 shadow-md">
         <div className="max-w-5xl mx-auto px-4 py-3 flex flex-col md:flex-row items-center justify-between gap-3 md:gap-0">
           <div className="flex w-full md:w-auto items-center justify-between">
-              <h1 className="text-lg font-bold truncate">Financeiro Diego</h1>
+              <div className="flex items-center gap-2">
+                  <h1 className="text-lg font-bold truncate">Financeiro Diego</h1>
+                  <span 
+                    className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full flex items-center gap-1 cursor-help ${
+                      dbError 
+                        ? 'bg-red-100 text-red-700 border border-red-200' 
+                        : 'bg-green-100 text-green-700 border border-green-200'
+                    }`}
+                    title={dbError ? `Erro de sincronismo: ${dbError}` : 'Sincronizado com o Supabase com sucesso'}
+                  >
+                     <span className={`w-1.5 h-1.5 rounded-full ${dbError ? 'bg-red-500 animate-pulse' : 'bg-green-500'}`}></span>
+                     {dbError ? 'Offline / Erro' : 'Sincronizado'}
+                  </span>
+              </div>
               <div className="flex gap-1 md:hidden">
                   <button 
                     onClick={() => setIsGlobalSearchOpen(true)} 
@@ -818,6 +831,9 @@ const App: React.FC = () => {
         <Settings 
           categories={effectiveCategories} 
           establishments={establishments} 
+          transactions={transactions}
+          session={session}
+          onRefreshData={fetchData}
           onClose={() => setIsSettingsOpen(false)} 
           onAddCategory={addCategory} 
           onUpdateCategory={updateCategory} 
